@@ -11,11 +11,13 @@ DerivedData/
 # Swift
 .build/
 .swiftpm/
+dist/
 
 # Logs and runtime files
 *.log
 *.sock
 *.socket
+*.pid
 
 # Secrets
 .env
