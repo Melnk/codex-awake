@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Xcode
+DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Swift
+.build/
+.swiftpm/
+
+# Logs and runtime files
+*.log
+*.sock
+*.socket
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Temporary files
+*.tmp
+*.swp
