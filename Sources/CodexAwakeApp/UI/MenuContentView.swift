@@ -12,6 +12,7 @@ struct MenuContentView: View {
         Text("Codex Desktop: \(model.codexDesktopRunning ? "Running" : "Not Running")")
         Text("Active sessions: \(model.totalActiveSessionCount)")
         Text("Keep Awake: \(model.assertionHeld ? "ON" : "OFF")")
+        Text("Closed-Lid: \(closedLidMenuStatus)")
 
         if model.activity.certainty == .unknownReconnecting {
             Text("Activity unknown — reconnecting")
@@ -21,7 +22,7 @@ struct MenuContentView: View {
             Divider()
             Text("Tracks cockpit tasks and Codex CLI/TUI sessions connected to this app's managed App Server.")
             Text("Tracks Codex Desktop task lifecycle without reading prompt or response text.")
-            Text("It prevents idle sleep; it does not bypass lid-close sleep.")
+            Text("Optional Closed-Lid mode uses a short privileged lease and requires one-time administrator approval.")
             Button("I Understand") { model.acknowledgeFirstRun() }
                 .accessibilityLabel("Acknowledge CodexAwake tracking scope")
         }
@@ -40,7 +41,7 @@ struct MenuContentView: View {
         Divider()
         Text("Managed and Codex Desktop task lifecycles are tracked")
         Text("Prompt and response text stays private")
-        Text("Prevents idle sleep only; lid-close policy still applies")
+        Text("Closed-Lid only activates while a protected Codex session is held")
         Button("Open Cockpit…") { openWindow(id: "cockpit") }
             .keyboardShortcut("k")
             .accessibilityLabel("Open the CodexAwake cockpit")
@@ -61,6 +62,15 @@ struct MenuContentView: View {
             get: { model.keepAwakeForCodexDesktop },
             set: { model.setKeepAwakeForCodexDesktop($0) }
         ))
+        Toggle("Closed-Lid Protection", isOn: Binding(
+            get: { model.closedLidProtectionEnabled },
+            set: { model.setClosedLidProtectionEnabled($0) }
+        ))
+        if !model.closedLidProtection.helperInstalled || !model.closedLidProtection.helperReachable {
+            Button("Install / Update Closed-Lid Helper…") { model.installClosedLidHelper() }
+        } else {
+            Button("Remove Closed-Lid Helper…") { model.removeClosedLidHelper() }
+        }
         Toggle("Launch at Login", isOn: Binding(
             get: { model.launchAtLogin },
             set: { model.setLaunchAtLogin($0) }
@@ -84,5 +94,12 @@ struct MenuContentView: View {
     private func abbreviated(_ value: String) -> String {
         guard value.count > 12 else { return value }
         return "\(value.prefix(8))…\(value.suffix(4))"
+    }
+
+    private var closedLidMenuStatus: String {
+        if model.closedLidProtection.leaseActive { return "Lease Active" }
+        if !model.closedLidProtection.helperInstalled { return "Helper Required" }
+        if !model.closedLidProtection.helperReachable { return "Helper Needs Update" }
+        return model.closedLidProtectionEnabled ? "Armed" : "Off"
     }
 }

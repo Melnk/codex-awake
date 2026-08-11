@@ -10,6 +10,7 @@ let package = Package(
     products: [
         .library(name: "CodexAwakeCore", targets: ["CodexAwakeCore"]),
         .executable(name: "CodexAwake", targets: ["CodexAwakeApp"]),
+        .executable(name: "CodexAwakeClosedLidHelper", targets: ["CodexAwakeClosedLidHelper"]),
         .executable(name: "CodexAwakeProtocolProbe", targets: ["CodexAwakeProtocolProbe"])
     ],
     targets: [
@@ -25,6 +26,11 @@ let package = Package(
             name: "CodexAwakeApp",
             dependencies: ["CodexAwakeCore"],
             path: "Sources/CodexAwakeApp"
+        ),
+        .executableTarget(
+            name: "CodexAwakeClosedLidHelper",
+            dependencies: ["CodexAwakeCore"],
+            path: "Sources/CodexAwakeClosedLidHelper"
         ),
         .executableTarget(
             name: "CodexAwakeProtocolProbe",

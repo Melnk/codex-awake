@@ -1,0 +1,181 @@
+import Foundation
+import OSLog
+
+public struct ClosedLidProtectionSnapshot: Equatable, Sendable {
+    public var requested = false
+    public var helperInstalled = false
+    public var helperReachable = false
+    public var leaseActive = false
+    public var leaseExpiresAt: Date?
+    public var lastError: String?
+
+    public init() {}
+}
+
+public actor ClosedLidLeaseManager {
+    private let helper: any ClosedLidHelperCommunicating
+    private let sleeper: any AsyncSleeping
+    private let fileManager: FileManager
+    private let token: String
+    private let leaseDuration: TimeInterval
+    private let renewalInterval: Duration
+    private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "ClosedLidLease")
+
+    private var requested = false
+    private var desiredActive = false
+    private var helperReachable = false
+    private var leaseActive = false
+    private var leaseExpiresAt: Date?
+    private var lastError: String?
+    private var renewalTask: Task<Void, Never>?
+
+    public init(
+        helper: any ClosedLidHelperCommunicating = ClosedLidHelperClient(),
+        sleeper: any AsyncSleeping = SystemSleeper(),
+        fileManager: FileManager = .default,
+        token: String = UUID().uuidString,
+        leaseDuration: TimeInterval = ClosedLidHelperConstants.leaseDuration,
+        renewalInterval: Duration = ClosedLidHelperConstants.renewalInterval
+    ) {
+        self.helper = helper
+        self.sleeper = sleeper
+        self.fileManager = fileManager
+        self.token = token
+        self.leaseDuration = leaseDuration
+        self.renewalInterval = renewalInterval
+    }
+
+    public func setRequested(_ enabled: Bool, protectionIsActive: Bool) async throws {
+        requested = enabled
+        desiredActive = protectionIsActive
+        if enabled, protectionIsActive {
+            do {
+                try await acquire()
+            } catch {
+                record(error)
+                throw error
+            }
+        } else {
+            await release()
+        }
+    }
+
+    public func setProtectionActive(_ active: Bool) async {
+        desiredActive = active
+        if active, requested {
+            do { try await acquire() } catch { record(error) }
+        } else {
+            await release()
+        }
+    }
+
+    @discardableResult
+    public func refresh(retryIfNeeded: Bool = true) async -> ClosedLidProtectionSnapshot {
+        if retryIfNeeded, requested, desiredActive, !leaseActive {
+            do { try await acquire() } catch { record(error) }
+        } else if helperInstalled {
+            do {
+                apply(try await helper.status())
+                helperReachable = true
+                lastError = nil
+                if !desiredActive { leaseActive = false }
+            } catch {
+                helperReachable = false
+                record(error)
+            }
+        }
+        return snapshot()
+    }
+
+    public func snapshot() -> ClosedLidProtectionSnapshot {
+        var value = ClosedLidProtectionSnapshot()
+        value.requested = requested
+        value.helperInstalled = helperInstalled
+        value.helperReachable = helperReachable
+        value.leaseActive = leaseActive
+        value.leaseExpiresAt = leaseExpiresAt
+        value.lastError = lastError
+        return value
+    }
+
+    private var helperInstalled: Bool {
+        fileManager.isExecutableFile(atPath: ClosedLidHelperConstants.installedExecutablePath)
+            && fileManager.fileExists(atPath: ClosedLidHelperConstants.installedPlistPath)
+    }
+
+    private func acquire() async throws {
+        let status = try await helper.acquire(token: token, duration: leaseDuration)
+        helperReachable = true
+        lastError = nil
+        apply(status)
+        guard status.disablesSleep else {
+            throw ClosedLidHelperClientError.rejected("helper did not enable the closed-lid lease")
+        }
+        startRenewalLoopIfNeeded()
+        logger.notice("Closed-Lid lease acquired")
+    }
+
+    private func release() async {
+        renewalTask?.cancel()
+        renewalTask = nil
+        guard leaseActive || helperReachable else {
+            leaseActive = false
+            leaseExpiresAt = nil
+            return
+        }
+        do {
+            let status = try await helper.release(token: token)
+            helperReachable = true
+            apply(status)
+            leaseActive = false
+            leaseExpiresAt = nil
+            lastError = nil
+            logger.notice("Closed-Lid lease released")
+        } catch {
+            helperReachable = false
+            leaseActive = false
+            leaseExpiresAt = nil
+            record(error)
+        }
+    }
+
+    private func startRenewalLoopIfNeeded() {
+        guard renewalTask == nil else { return }
+        renewalTask = Task { [weak self, sleeper, renewalInterval] in
+            while !Task.isCancelled {
+                do { try await sleeper.sleep(for: renewalInterval) } catch { return }
+                guard !Task.isCancelled, let self else { return }
+                await self.renew()
+            }
+        }
+    }
+
+    private func renew() async {
+        guard requested, desiredActive else {
+            await release()
+            return
+        }
+        do {
+            let status = try await helper.renew(token: token, duration: leaseDuration)
+            helperReachable = true
+            lastError = nil
+            apply(status)
+        } catch {
+            helperReachable = false
+            leaseActive = false
+            leaseExpiresAt = nil
+            record(error)
+        }
+    }
+
+    private func apply(_ status: ClosedLidHelperStatus) {
+        leaseActive = desiredActive && status.disablesSleep
+        leaseExpiresAt = status.leaseExpiresAt
+        if let error = status.error { lastError = String(error.prefix(300)) }
+    }
+
+    private func record(_ error: Error) {
+        lastError = SafeDisplay.sanitizedError(error)
+        logger.error("Closed-Lid helper error: \(self.lastError ?? "unknown", privacy: .public)")
+    }
+}

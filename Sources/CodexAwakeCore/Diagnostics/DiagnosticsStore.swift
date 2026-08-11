@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 public struct DiagnosticsSnapshot: Equatable, Sendable {
-    public var appVersion = "1.2.1 (4)"
+    public var appVersion = "1.3.0 (5)"
     public var macOSVersion = ProcessInfo.processInfo.operatingSystemVersionString
     public var architecture = "unknown"
     public var codexPath: String?
@@ -10,6 +10,7 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
     public var codexDesktopRunning = false
     public var codexDesktopActiveSessionIDs: Set<String> = []
     public var keepAwakeForCodexDesktop = true
+    public var closedLidProtection = ClosedLidProtectionSnapshot()
     public var transport = "Unix domain socket (WebSocket upgrade)"
     public var endpoint: String?
     public var appServerState: AppServerState = .stopped
@@ -53,13 +54,19 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
         Active turn IDs: \(turns.isEmpty ? "none" : turns)
         Activity certainty: \(activity.certainty.rawValue)
         Power assertion: \(assertionHeld ? "held" : "released")
+        Closed-Lid requested: \(closedLidProtection.requested ? "yes" : "no")
+        Closed-Lid helper installed: \(closedLidProtection.helperInstalled ? "yes" : "no")
+        Closed-Lid helper reachable: \(closedLidProtection.helperReachable ? "yes" : "no")
+        Closed-Lid lease: \(closedLidProtection.leaseActive ? "active" : "inactive")
+        Closed-Lid lease expires: \(closedLidProtection.leaseExpiresAt.map(formatter.string(from:)) ?? "none")
+        Closed-Lid error: \(closedLidProtection.lastError ?? "none")
         Last App Server event: \(lastEventAt.map(formatter.string(from:)) ?? "none")
         Last reconciliation: \(lastReconciliationAt.map(formatter.string(from:)) ?? "none")
         Reconnects: \(reconnectCount)
         Last safe error: \(lastSafeError ?? "none")
 
         Scope: managed tasks use App Server events. Codex Desktop activity uses only local rollout identity and task_started/task_complete markers; prompt and response text is never read. Independent CLI, cloud, other-user, and remote-host sessions are not tracked.
-        Closed lid: CodexAwake prevents idle system sleep; it does not bypass macOS lid-close sleep policy.
+        Closed lid: when the optional privileged helper is installed, explicitly enabled, and its short lease is active, CodexAwake temporarily disables lid-triggered sleep. The helper restores the original power setting when the final lease ends or expires.
         """
     }
 }

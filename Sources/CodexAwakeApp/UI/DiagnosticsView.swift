@@ -21,6 +21,11 @@ struct DiagnosticsView: View {
                 Button("Copy Diagnostics") { model.copyDiagnostics() }
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                 Button("Choose Codex Binary…") { model.chooseCodexBinary() }
+                if model.closedLidProtection.helperInstalled {
+                    Button("Remove Closed-Lid Helper…") { model.removeClosedLidHelper() }
+                } else {
+                    Button("Install Closed-Lid Helper…") { model.installClosedLidHelper() }
+                }
                 Spacer()
                 Text("Managed events and privacy-safe Desktop lifecycle markers are tracked separately.")
                     .font(.caption)

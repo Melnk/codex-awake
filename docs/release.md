@@ -1,6 +1,6 @@
 # Future signed releases
 
-Local builds are ad-hoc signed by `scripts/build_app.sh`. They are not notarized and must not be presented as an official distributable release.
+Local builds are ad-hoc signed by `scripts/build_app.sh`. They are not notarized and must not be presented as an official distributable release. The local Closed-Lid helper uses an explicit administrator-run installer and pins the installed launch daemon to that build's CDHash; rebuilding requires reinstalling the helper.
 
 For a future public/private downloadable release:
 
@@ -12,5 +12,7 @@ For a future public/private downloadable release:
 6. staple and verify the notarization ticket;
 7. publish checksums, source commit, supported macOS/Codex matrix, and release notes;
 8. attach the verified artifact to a GitHub release only after tests, real read-only protocol handshake, and manual multi-client assertion verification pass.
+
+For a notarized distribution, migrate the bundled launch daemon registration to the current `SMAppService.daemon(plistName:)` bundle layout and approval flow, test disabled-background-item behavior, and retain the same narrow XPC/lease boundary. Do not claim that the current ad-hoc local installer is a notarized ServiceManagement deployment.
 
 Never commit certificates, private keys, App Store Connect credentials, keychain exports, API keys, or notarization profiles. The current repository intentionally contains no publishing credentials or fake notarization step.

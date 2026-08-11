@@ -1,8 +1,8 @@
 # CodexAwake
 
-CodexAwake is a native macOS menu bar utility and Codex cockpit. It launches its own local Codex App Server, provides a streamed chat UI for Codex, and prevents **idle system sleep** while that server reports active Codex work or while the Codex desktop app is running.
+CodexAwake is a native macOS menu bar utility and Codex cockpit. It launches its own local Codex App Server, provides a streamed chat UI for Codex, prevents **idle system sleep**, and offers an explicit opt-in **Closed-Lid** mode backed by a narrow privileged helper.
 
-It uses the official App Server protocol for managed-task state. For independent Codex Desktop tasks, it reads only local rollout identity plus `task_started` / `task_complete` lifecycle markers; prompt and response text is never decoded. The desktop bundle identifier remains the ON/OFF presence signal. CodexAwake owns at most one `PreventUserIdleSystemSleep` assertion. The display may still turn off.
+It uses the official App Server protocol for managed-task state. For independent Codex Desktop tasks, it reads only local rollout identity plus `task_started` / `task_complete` lifecycle markers; prompt and response text is never decoded. The desktop bundle identifier remains the ON/OFF presence signal. CodexAwake owns at most one `PreventUserIdleSystemSleep` assertion. The display may still turn off. Closed-Lid is separate, defaults off, and changes the system sleep policy only while a short renewable lease is active.
 
 > [!IMPORTANT]
 > CodexAwake tracks its own cockpit tasks and Codex CLI/TUI sessions connected with `--remote` to the App Server launched by CodexAwake. It separately detects active root tasks created by Codex Desktop from lifecycle markers in `~/.codex/sessions`; those sessions are identified as Desktop tasks but their prompts, responses, reasoning, and tool output are not read. Ordinary unmanaged CLI sessions, Codex Cloud, another user's processes, and remote hosts remain out of scope unless they connect to the managed server.
@@ -14,6 +14,7 @@ Open **Open Cockpit…** from the menu bar. The dark graphite and silver native 
 - a large illuminated **ON/OFF** control for automatic sleep protection;
 - Codex Desktop presence, assertion, and combined active-session instruments;
 - privacy-safe IDs for active Codex Desktop and managed tasks;
+- **CLOSED-LID** status, toggle, and helper install/update action;
 - a project picker and streamed Codex conversation;
 - **New task**, **Stop**, Enter-to-send, Shift-Enter newline, and arrow-button controls;
 - approval cards for shell commands, network access, and file changes.
@@ -26,7 +27,11 @@ The cockpit uses the authenticated [Codex App Server](https://learn.chatgpt.com/
 Cockpit / connected CLI ─→ managed App Server events ───────────────┐
 Codex Desktop rollouts ──→ task_started / task_complete markers ────┼─→ combined active sessions
 Codex Desktop bundle ID ─→ ON/OFF presence ─────────────────────────┘              ↓
-                                                                        ONE idle-sleep assertion
+                                                               PowerProtectionManager
+                                                                  ↙             ↘
+                                                ONE idle-sleep assertion     optional XPC lease
+                                                                                      ↓
+                                                                      root helper → pmset disablesleep
 ```
 
 The runtime status returned by `thread/read` is the source of truth. Notifications (`turn/started`, `turn/completed`, `thread/status/changed`, and `thread/closed`) reduce latency; `thread/loaded/list` plus `thread/read` reconcile state at connection, reconnection, and every 10 seconds.
@@ -61,7 +66,7 @@ The first-run menu, cockpit, and Diagnostics window repeat this boundary. Deskto
 - full Xcode for source builds (tested with Xcode 26.6 / Swift 6.3.3);
 - ChatGPT/Codex Desktop with a compatible bundled runtime, or a standalone Codex CLI whose help advertises both `codex --remote` and `codex app-server --listen unix://`.
 
-No third-party packages are used. The application uses SwiftUI, Foundation, Swift Concurrency, OSLog, ServiceManagement, AppKit, CryptoKit, Darwin Unix sockets, and IOKit.
+No third-party packages are used. The application uses SwiftUI, Foundation, Swift Concurrency, OSLog, ServiceManagement, AppKit, CryptoKit, Darwin Unix sockets, XPC, and IOKit.
 
 ## Build and install
 
@@ -73,7 +78,7 @@ scripts/build_app.sh
 open dist/CodexAwake.app
 ```
 
-The release build is assembled as `dist/CodexAwake.app` and ad-hoc signed for local development. Copy it to `/Applications` if desired. A paid Apple Developer account is not required for local use.
+The release build is assembled as `dist/CodexAwake.app` and ad-hoc signed for local development. It includes the separately signed Closed-Lid helper plus narrow install/uninstall scripts. Copy it to `/Applications` if desired. A paid Apple Developer account is not required for local use, but installing the helper requires one administrator approval.
 
 To build a debug bundle:
 
@@ -89,7 +94,7 @@ CodexAwake has no Dock icon (`LSUIElement=true`). The cockpit opens automaticall
 
 1. cockpit tasks and sessions connected to its managed `--remote` endpoint are tracked individually;
 2. Codex Desktop process presence and top-level task lifecycle are detected, while chat contents remain private;
-3. the application prevents idle sleep and does not bypass lid-close sleep policy.
+3. idle sleep protection is unprivileged; Closed-Lid is a separate opt-in feature that requires an administrator-approved helper and automatically expires.
 
 CodexAwake first tries the runtime bundled inside an installed ChatGPT/Codex app. If no compatible runtime can be found, the menu shows `Codex: Not found` and App Server state `Failed`; open **Diagnostics… → Choose Codex Binary…** to select an executable.
 
@@ -145,6 +150,21 @@ The command contains no capability token or credential. The endpoint changes onl
 
 The large main power control overrides every source and releases immediately when switched off. The separate desktop-presence toggle leaves precise managed-task and detected Desktop-task protection enabled. CodexAwake does not expose a default-on manual or indefinite force-awake mode.
 
+## Closed-Lid mode
+
+[Apple documents](https://developer.apple.com/documentation/iokit/kiopmassertiontypepreventuseridlesystemsleep) that `PreventUserIdleSystemSleep` may still allow sleep for lid close. Closed-Lid therefore uses a separate root helper instead of pretending that the ordinary assertion can do more than the platform promises.
+
+1. Build and launch CodexAwake 1.3 or later.
+2. In the cockpit, turn on **CLOSED-LID**.
+3. Click **Install / Update Helper** and complete the one-time `sudo` prompt in Terminal.
+4. Wait until the cockpit says **LEASE ACTIVE · LID MAY CLOSE** before closing the display.
+
+The helper accepts only `status`, `acquire`, `renew`, and `release` over its fixed XPC interface. The installed launch daemon authorizes the exact CDHash of the app that installed it. Ad-hoc rebuilding changes that hash, so local development builds must use **Install / Update Helper** again.
+
+While ordinary sleep protection is required, CodexAwake acquires a 120-second lease and renews it every 30 seconds. The root helper snapshots the prior `disablesleep` value, applies `pmset -a disablesleep 1`, persists only token expirations and the restoration value under `/var/db/com.melnikoleg.CodexAwake`, and restores the prior value after the final release, app shutdown, helper shutdown, or lease expiry. A client crash can therefore leave the setting changed for no more than the remaining bounded lease.
+
+Closed-Lid keeps the computer awake as a whole, not only Codex. Music, downloads, servers, and other processes can continue; the internal display is physically unavailable. Battery drain and heat will be higher, and macOS may still force sleep for low battery, thermal protection, shutdown, or other safety conditions. The feature defaults off. Use **Diagnostics → Remove Closed-Lid Helper** to restore normal behavior and remove the daemon.
+
 ## Reconnect and fail-safe policy
 
 If the observer connection drops while managed work may be active, state becomes **Activity unknown / reconnecting**. The assertion is retained for at most 30 seconds while the client reconnects and reconciles. A confirmed App Server exit clears managed-task protection; desktop-presence protection remains if enabled and Codex Desktop is still running. If neither source can be confirmed, CodexAwake releases rather than keeping the Mac awake forever.
@@ -165,6 +185,7 @@ The menu's **Launch at Login** toggle uses `SMAppService.mainApp`. CodexAwake do
 - loaded/active counts and abbreviated thread/turn IDs;
 - active Codex Desktop lifecycle count and abbreviated session IDs;
 - assertion state, last event/reconciliation, reconnect count;
+- Closed-Lid requested/installed/reachable/lease state, expiry, and sanitized helper error;
 - the latest sanitized operational error.
 
 It excludes prompts, model responses, diffs, tool output, terminal output, file contents, tokens, credentials, cookies, auth files, and complete environment variables. The Desktop scanner decodes only the first `session_meta` record and searches backwards for the latest exact lifecycle marker; it does not decode message records. Cockpit messages are held in the current UI session and sent to the managed Codex server, but are never copied into Diagnostics or OSLog. Codex persists normal conversation history according to its own configuration. There is no CodexAwake telemetry.
@@ -184,11 +205,11 @@ It excludes prompts, model responses, diffs, tool output, terminal output, file 
 6. Wait for the final turn to complete and the one-second debounce. Confirm `Keep Awake: OFF`.
 7. Repeat with multiple TUI clients; CodexAwake should still own only one assertion.
 
-Do not use `pmset` to change power settings for CodexAwake.
+The unprivileged app never runs `pmset`. Only the installed root helper invokes the exact fixed `disablesleep` commands while a bounded lease exists.
 
-## Closed-lid limitation
+## Closed-lid limitations
 
-CodexAwake prevents **idle system sleep** during active managed turns. It does not promise to cancel forced sleep when a MacBook lid is physically closed. Closed-lid behavior depends on Apple's supported clamshell mode, power, external displays, and system configuration. There are no kernel hacks, fake input events, `sudo pmset` changes, or lid-policy bypasses.
+Without the optional helper, CodexAwake prevents **idle system sleep** only and closing a MacBook lid still sleeps the machine. With a confirmed active Closed-Lid lease, the helper temporarily requests `disablesleep`; this is a system-wide power-policy change rather than a per-process suspension exception. It cannot override low-battery, thermal, shutdown, or hardware safety behavior and is not presented as an unconditional macOS guarantee.
 
 ## Built-in Codex prevent-idle feature
 
@@ -199,6 +220,8 @@ Some Codex versions may expose their own experimental prevent-idle-sleep feature
 - Unix socket runtime directory: `0700`;
 - no listening TCP interface;
 - no credentials in arguments, clipboard, logs, or helper script;
+- privileged helper accepts only four fixed lease/status methods and authenticates the installing app's exact code hash;
+- helper state contains no prompt, credential, workspace, or response data and expires automatically;
 - no prompt, response, diff, tool, terminal, or file-content logging (cockpit text exists only in UI memory and normal Codex conversation storage);
 - read-only Desktop rollout scanning limited to identity and lifecycle markers;
 - no telemetry or CodexAwake outbound network client;
@@ -226,7 +249,7 @@ scripts/verify.sh               # metadata, LSUIElement, signature, diff, secret
 scripts/real_app_server_test.sh # explicit, read-only real CLI handshake
 ```
 
-The test suite wraps power management behind `PowerAssertionControlling`; tests never create a real sleep assertion. It includes mocked power, process, client, timer/clock behavior, a scripted transport, malformed payloads, disconnect/reconnect, request matching, stale socket policy, and 10+ concurrent thread scenarios.
+The test suite wraps power management and the privileged helper client behind protocols; tests never create a real sleep assertion or change `pmset`. It includes mocked power and lease clients, fail-open idle assertion behavior, safe installer command quoting, process/client/timer behavior, a scripted transport, malformed payloads, disconnect/reconnect, request matching, stale socket policy, and 10+ concurrent thread scenarios.
 
 ## Troubleshooting
 
@@ -261,6 +284,13 @@ The test suite wraps power management behind `PowerAssertionControlling`; tests 
 
 - `pmset -g assertions` can show assertions from Codex itself and other apps.
 - Disable any separately enabled experimental Codex prevent-idle feature if you want only CodexAwake's assertion.
+
+**Closed-Lid says Helper Required or Helper Needs Update**
+
+- Click **Install / Update Helper** and complete the administrator prompt in Terminal.
+- Reinstall after every ad-hoc rebuild because the authorized app CDHash changes.
+- Do not close the lid until the cockpit explicitly says **LEASE ACTIVE · LID MAY CLOSE**.
+- Check the sanitized helper error in Diagnostics. If removal is needed, use **Remove Closed-Lid Helper** and complete its administrator prompt.
 
 ## Architecture and release workflow
 

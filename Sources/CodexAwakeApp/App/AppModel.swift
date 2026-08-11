@@ -20,6 +20,9 @@ final class AppModel: ObservableObject {
     @Published var codexDesktopRunning = false
     @Published var codexDesktopActiveSessionIDs: Set<String> = []
     @Published var keepAwakeForCodexDesktop: Bool
+    @Published var closedLidProtectionEnabled: Bool
+    @Published var closedLidProtection = ClosedLidProtectionSnapshot()
+    @Published var closedLidActionMessage: String?
     @Published var workspacePath: String?
     @Published var chatMessages: [CodexChatMessage] = []
     @Published var chatThreadID: String?
@@ -31,7 +34,7 @@ final class AppModel: ObservableObject {
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "App")
     private let tracker = ThreadActivityTracker()
     private let desktopRolloutScanner = CodexDesktopRolloutScanner()
-    private let power = PowerAssertionManager()
+    private let power: PowerProtectionManager
     private let coordinator: AwakeCoordinator
     private let binaryLocator = CodexBinaryLocator()
     private let socketManager = SocketPathManager()
@@ -43,6 +46,7 @@ final class AppModel: ObservableObject {
     private var runtime: SocketPathManager.Runtime?
     private var connectionLoopTask: Task<Void, Never>?
     private var desktopActivityTask: Task<Void, Never>?
+    private var closedLidStatusTask: Task<Void, Never>?
     private var workspaceObserverTokens: [NSObjectProtocol] = []
     private var codexDesktopLaunchDate: Date?
     private var isShuttingDown = false
@@ -55,8 +59,10 @@ final class AppModel: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         let auto = defaults.object(forKey: "AutoKeepAwake") as? Bool ?? true
         let keepForDesktop = defaults.object(forKey: "KeepAwakeForCodexDesktop") as? Bool ?? true
+        let closedLid = defaults.bool(forKey: "ClosedLidProtectionEnabled")
         autoKeepAwake = auto
         keepAwakeForCodexDesktop = keepForDesktop
+        closedLidProtectionEnabled = closedLid
         firstRunAcknowledged = defaults.bool(forKey: "FirstRunAcknowledged")
         if let savedWorkspace = defaults.string(forKey: "CodexWorkspacePath"),
            FileManager.default.fileExists(atPath: savedWorkspace) {
@@ -64,6 +70,8 @@ final class AppModel: ObservableObject {
         } else {
             workspacePath = nil
         }
+        let power = PowerProtectionManager(closedLidRequested: closedLid)
+        self.power = power
         coordinator = AwakeCoordinator(
             power: power,
             autoKeepAwake: auto,
@@ -77,6 +85,7 @@ final class AppModel: ObservableObject {
         logger.notice("CodexAwake lifecycle started")
         startCodexDesktopMonitoring()
         startCodexDesktopActivityMonitoring()
+        startClosedLidStatusMonitoring()
         Task { await startManagedServer() }
     }
 
@@ -139,6 +148,47 @@ final class AppModel: ObservableObject {
         Task {
             await coordinator.setKeepAwakeForCodexDesktop(enabled)
             await refreshPublishedState()
+        }
+    }
+
+    func setClosedLidProtectionEnabled(_ enabled: Bool) {
+        closedLidProtectionEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: "ClosedLidProtectionEnabled")
+        closedLidActionMessage = enabled
+            ? "Closed-Lid requested. Install the helper if it is not ready."
+            : "Closed-Lid disabled; normal lid sleep is restored."
+        Task {
+            do {
+                try await power.setClosedLidRequested(enabled)
+            } catch {
+                record(error)
+            }
+            closedLidProtection = await power.refreshClosedLidStatus()
+            updateDiagnostics()
+        }
+    }
+
+    func installClosedLidHelper() {
+        if !closedLidProtectionEnabled { setClosedLidProtectionEnabled(true) }
+        openClosedLidHelperCommand(
+            resource: "install-closed-lid-helper",
+            title: "Installing CodexAwake Closed-Lid helper"
+        )
+        closedLidActionMessage = "Complete the administrator prompt in Terminal, then return here."
+    }
+
+    func removeClosedLidHelper() {
+        Task {
+            closedLidProtectionEnabled = false
+            UserDefaults.standard.set(false, forKey: "ClosedLidProtectionEnabled")
+            try? await power.setClosedLidRequested(false)
+            closedLidProtection = await power.refreshClosedLidStatus()
+            openClosedLidHelperCommand(
+                resource: "uninstall-closed-lid-helper",
+                title: "Removing CodexAwake Closed-Lid helper"
+            )
+            closedLidActionMessage = "Complete the administrator prompt in Terminal."
+            updateDiagnostics()
         }
     }
 
@@ -308,6 +358,8 @@ final class AppModel: ObservableObject {
         stopCodexDesktopMonitoring()
         desktopActivityTask?.cancel()
         desktopActivityTask = nil
+        closedLidStatusTask?.cancel()
+        closedLidStatusTask = nil
         cancelPendingApprovals()
         connectionLoopTask?.cancel()
         connectionLoopTask = nil
@@ -460,13 +512,14 @@ final class AppModel: ObservableObject {
 
     private func updateDiagnostics() {
         var value = DiagnosticsSnapshot()
-        value.appVersion = "1.2.1 (4)"
+        value.appVersion = "1.3.0 (5)"
         value.architecture = Self.architecture
         value.codexPath = codexPath
         value.codexVersion = codexVersion
         value.codexDesktopRunning = codexDesktopRunning
         value.codexDesktopActiveSessionIDs = codexDesktopActiveSessionIDs
         value.keepAwakeForCodexDesktop = keepAwakeForCodexDesktop
+        value.closedLidProtection = closedLidProtection
         value.endpoint = endpoint
         value.appServerState = appServerState
         value.serverPID = serverPID
@@ -507,6 +560,52 @@ final class AppModel: ObservableObject {
                     return
                 }
             }
+        }
+    }
+
+    private func startClosedLidStatusMonitoring() {
+        guard closedLidStatusTask == nil else { return }
+        closedLidStatusTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let value = await power.refreshClosedLidStatus()
+                if value != closedLidProtection {
+                    closedLidProtection = value
+                    if value.leaseActive {
+                        closedLidActionMessage = "Closed-Lid lease active. The display may be closed."
+                    } else if value.requested, value.helperInstalled, value.helperReachable {
+                        closedLidActionMessage = "Closed-Lid armed; the lease starts with sleep protection."
+                    }
+                    updateDiagnostics()
+                }
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            }
+        }
+    }
+
+    private func openClosedLidHelperCommand(resource: String, title: String) {
+        do {
+            guard let script = Bundle.main.url(forResource: resource, withExtension: "sh") else {
+                throw CodexAwakeError.serverStartFailed("Closed-Lid installer resource is missing")
+            }
+            let support = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            ).appendingPathComponent("CodexAwake", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: support,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            let command = support.appendingPathComponent("\(title).command")
+            try ClosedLidHelperCommandBuilder.commandContents(scriptPath: script.path, title: title)
+                .write(to: command, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: command.path)
+            NSWorkspace.shared.open(command)
+        } catch {
+            record(error)
         }
     }
 

@@ -24,9 +24,9 @@
 
 **Decision:** use `kIOPMAssertionTypePreventUserIdleSystemSleep`, not a display-sleep assertion. Codex work does not require the screen to remain lit.
 
-## ADR-007 — No lid-close promise
+## ADR-007 — Opt-in privileged Closed-Lid lease
 
-**Decision:** document supported idle-sleep prevention only. Lid-close behavior is governed by macOS clamshell policy; hacks, fake input, global `pmset`, and kernel workarounds are excluded.
+**Decision:** the ordinary app continues to use the documented idle-sleep assertion. After explicit user authorization, an isolated root daemon may temporarily set `pmset disablesleep` only while a bounded 120-second lease exists. It snapshots and restores the prior value, persists expiry for crash recovery, accepts no arbitrary command, and defaults off. This supersedes the original no-lid-bypass scope after the owner explicitly requested root-helper support.
 
 ## ADR-008 — Version drift by capability probing
 
@@ -47,3 +47,7 @@
 ## ADR-012 — Installed schema is the compatibility authority
 
 **Decision:** generate and inspect the schema from the selected runtime when official examples and live validation disagree. For the tested bundled alpha runtime, `thread/start` uses `sandbox = workspace-write` and `approvalPolicy = on-request`; turn-level `sandboxPolicy.type = workspaceWrite` remains camel-case.
+
+## ADR-013 — Exact client identity for the root helper
+
+**Decision:** the install script writes the installing app's exact CDHash into the launch daemon arguments, and the daemon converts it to an XPC connection signing requirement before accepting clients. Ad-hoc rebuilds therefore require helper reinstallation. The privileged API remains limited to status/acquire/renew/release and never accepts executable paths, shell text, settings names, or values.

@@ -52,48 +52,52 @@ struct CockpitView: View {
     }
 
     private var controlDeck: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            brandHeader
-            powerControl
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                brandHeader
+                powerControl
 
-            HStack(spacing: 10) {
-                InstrumentCard(
-                    label: "CODEX APP",
-                    value: model.codexDesktopRunning ? "ON" : "OFF",
-                    icon: "macwindow",
-                    accent: model.codexDesktopRunning ? CockpitPalette.ice : CockpitPalette.muted
-                )
-                InstrumentCard(
-                    label: "ACTIVE SESSIONS",
-                    value: "\(model.totalActiveSessionCount)",
-                    icon: "waveform.path.ecg",
-                    accent: model.totalActiveSessionCount > 0 ? CockpitPalette.ice : CockpitPalette.muted
-                )
+                HStack(spacing: 10) {
+                    InstrumentCard(
+                        label: "CODEX APP",
+                        value: model.codexDesktopRunning ? "ON" : "OFF",
+                        icon: "macwindow",
+                        accent: model.codexDesktopRunning ? CockpitPalette.ice : CockpitPalette.muted
+                    )
+                    InstrumentCard(
+                        label: "ACTIVE SESSIONS",
+                        value: "\(model.totalActiveSessionCount)",
+                        icon: "waveform.path.ecg",
+                        accent: model.totalActiveSessionCount > 0 ? CockpitPalette.ice : CockpitPalette.muted
+                    )
+                }
+
+                activeTasks
+                externalChatGPTNotice
+                Toggle("Keep awake while Codex App is running", isOn: Binding(
+                    get: { model.keepAwakeForCodexDesktop },
+                    set: { model.setKeepAwakeForCodexDesktop($0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(CockpitPalette.silver)
+
+                closedLidControl
+
+                HStack(spacing: 10) {
+                    Button("Diagnostics") { openWindow(id: "diagnostics") }
+                        .buttonStyle(CockpitSecondaryButtonStyle())
+                    Button("Restart") { model.restartServer() }
+                        .buttonStyle(CockpitSecondaryButtonStyle())
+                        .disabled(model.appServerState == .starting || model.appServerState == .stopping)
+                }
             }
-
-            activeTasks
-            externalChatGPTNotice
-            Toggle("Keep awake while Codex App is running", isOn: Binding(
-                get: { model.keepAwakeForCodexDesktop },
-                set: { model.setKeepAwakeForCodexDesktop($0) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(CockpitPalette.silver)
-            Spacer(minLength: 4)
-
-            HStack(spacing: 10) {
-                Button("Diagnostics") { openWindow(id: "diagnostics") }
-                    .buttonStyle(CockpitSecondaryButtonStyle())
-                Button("Restart") { model.restartServer() }
-                    .buttonStyle(CockpitSecondaryButtonStyle())
-                    .disabled(model.appServerState == .starting || model.appServerState == .stopping)
-            }
+            .padding(18)
         }
-        .padding(18)
         .background(CockpitPanel(cornerRadius: 26))
         .padding(.trailing, 18)
+        .scrollIndicators(.hidden)
     }
 
     private var brandHeader: some View {
@@ -257,6 +261,45 @@ struct CockpitView: View {
         .padding(11)
         .background(CockpitPalette.silver.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(CockpitPalette.silver.opacity(0.12)))
+    }
+
+    private var closedLidControl: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 9) {
+                Image(systemName: model.closedLidProtection.leaseActive ? "lock.open.display" : "lock.display")
+                    .foregroundStyle(closedLidAccent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("CLOSED-LID")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .tracking(1)
+                    Text(closedLidStatusText)
+                        .font(.system(size: 10))
+                        .foregroundStyle(CockpitPalette.muted)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { model.closedLidProtectionEnabled },
+                    set: { model.setClosedLidProtectionEnabled($0) }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
+
+            if !model.closedLidProtection.helperInstalled || !model.closedLidProtection.helperReachable {
+                Button("Install / Update Helper") { model.installClosedLidHelper() }
+                    .buttonStyle(CockpitSecondaryButtonStyle())
+                    .font(.system(size: 10, weight: .semibold))
+            }
+
+            Text(model.closedLidActionMessage ?? "Requires administrator approval once. Restores normal sleep when its lease expires.")
+                .font(.system(size: 9))
+                .foregroundStyle(model.closedLidProtection.lastError == nil ? CockpitPalette.muted : CockpitPalette.amber)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(11)
+        .background(closedLidAccent.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(closedLidAccent.opacity(0.18)))
     }
 
     private var chatDeck: some View {
@@ -467,6 +510,9 @@ struct CockpitView: View {
 
     private var powerSubtitle: String {
         guard model.autoKeepAwake else { return "automatic sleep protection disabled" }
+        if model.closedLidProtection.leaseActive {
+            return "closed-lid lease active · protection engaged"
+        }
         if model.assertionHeld, !model.codexDesktopActiveSessionIDs.isEmpty {
             return "active Codex Desktop session · protection engaged"
         }
@@ -474,6 +520,20 @@ struct CockpitView: View {
             return "Codex Desktop detected · protection engaged"
         }
         return model.assertionHeld ? "idle sleep protection engaged" : "armed for Codex work"
+    }
+
+    private var closedLidAccent: Color {
+        if model.closedLidProtection.leaseActive { return CockpitPalette.ice }
+        if model.closedLidProtectionEnabled, model.closedLidProtection.helperInstalled { return CockpitPalette.amber }
+        return CockpitPalette.muted
+    }
+
+    private var closedLidStatusText: String {
+        if model.closedLidProtection.leaseActive { return "LEASE ACTIVE · LID MAY CLOSE" }
+        if !model.closedLidProtection.helperInstalled { return "ROOT HELPER REQUIRED" }
+        if !model.closedLidProtection.helperReachable { return "HELPER NEEDS UPDATE" }
+        if model.closedLidProtectionEnabled { return "ARMED · WAITS FOR PROTECTION" }
+        return "OFF · NORMAL LID SLEEP"
     }
 
     private var serverAccent: Color {
