@@ -9,6 +9,8 @@ public actor AwakeCoordinator {
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "Coordinator")
 
     private var autoKeepAwake: Bool
+    private var keepAwakeForCodexDesktop: Bool
+    private var codexDesktopRunning = false
     private var latestSnapshot = ActivitySnapshot()
     private var pendingRelease: Task<Void, Never>?
 
@@ -16,18 +18,34 @@ public actor AwakeCoordinator {
         power: any PowerAssertionControlling,
         sleeper: any AsyncSleeping = SystemSleeper(),
         autoKeepAwake: Bool = true,
+        keepAwakeForCodexDesktop: Bool = true,
         idleDebounce: Duration = .seconds(1),
         reconnectGrace: Duration = .seconds(30)
     ) {
         self.power = power
         self.sleeper = sleeper
         self.autoKeepAwake = autoKeepAwake
+        self.keepAwakeForCodexDesktop = keepAwakeForCodexDesktop
         self.idleDebounce = idleDebounce
         self.reconnectGrace = reconnectGrace
     }
 
     public func update(_ snapshot: ActivitySnapshot) async {
         latestSnapshot = snapshot
+        await evaluate()
+    }
+
+    public func setCodexDesktopRunning(_ running: Bool) async {
+        codexDesktopRunning = running
+        await evaluate()
+    }
+
+    public func setKeepAwakeForCodexDesktop(_ enabled: Bool) async {
+        keepAwakeForCodexDesktop = enabled
+        await evaluate()
+    }
+
+    private func evaluate() async {
         pendingRelease?.cancel()
         pendingRelease = nil
 
@@ -36,8 +54,13 @@ public actor AwakeCoordinator {
             return
         }
 
-        if snapshot.certainty == .unknownReconnecting {
-            if snapshot.activeCount > 0 {
+        if keepAwakeForCodexDesktop, codexDesktopRunning {
+            await acquireAssertion()
+            return
+        }
+
+        if latestSnapshot.certainty == .unknownReconnecting {
+            if latestSnapshot.activeCount > 0 {
                 do {
                     try await power.acquire()
                 } catch {
@@ -48,12 +71,8 @@ public actor AwakeCoordinator {
             return
         }
 
-        if snapshot.activeCount > 0 {
-            do {
-                try await power.acquire()
-            } catch {
-                logger.error("Power assertion acquisition failed: \(SafeDisplay.sanitizedError(error), privacy: .public)")
-            }
+        if latestSnapshot.activeCount > 0 {
+            await acquireAssertion()
             return
         }
 
@@ -63,7 +82,7 @@ public actor AwakeCoordinator {
     public func setAutoKeepAwake(_ enabled: Bool) async {
         autoKeepAwake = enabled
         if enabled {
-            await update(latestSnapshot)
+            await evaluate()
         } else {
             pendingRelease?.cancel()
             pendingRelease = nil
@@ -74,7 +93,12 @@ public actor AwakeCoordinator {
     public func serverConfirmedStopped() async {
         pendingRelease?.cancel()
         pendingRelease = nil
-        await power.release()
+        latestSnapshot = ActivitySnapshot()
+        if autoKeepAwake, keepAwakeForCodexDesktop, codexDesktopRunning {
+            await acquireAssertion()
+        } else {
+            await power.release()
+        }
     }
 
     public func shutdown() async {
@@ -85,6 +109,14 @@ public actor AwakeCoordinator {
 
     public func assertionIsHeld() async -> Bool {
         await power.assertionIsHeld()
+    }
+
+    private func acquireAssertion() async {
+        do {
+            try await power.acquire()
+        } catch {
+            logger.error("Power assertion acquisition failed: \(SafeDisplay.sanitizedError(error), privacy: .public)")
+        }
     }
 
     private func scheduleRelease(after delay: Duration) {

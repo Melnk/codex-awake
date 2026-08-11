@@ -32,10 +32,14 @@
 
 **Decision:** record the version for Diagnostics, probe current help for required transports/flags, decode only minimal fields, and fail visibly on incompatibility. Do not depend on a stale hard-coded full schema or opt into unrelated experimental APIs.
 
-## ADR-009 — Do not attach to independent desktop sessions
+## ADR-009 — Separate desktop presence from managed task state
 
-**Decision:** supervise and observe only the server CodexAwake owns. Independent desktop/cloud/plain CLI sessions have different lifecycle/security boundaries and no authorized attachment mechanism in scope.
+**Decision:** supervise and enumerate tasks only on the server CodexAwake owns. Detect the independent Codex Desktop process by its documented bundle identity as an ON/OFF keep-awake input, but never present that presence as a task or claim access to its private task contents/status. Independent cloud/plain CLI sessions retain separate lifecycle and security boundaries.
 
 ## ADR-010 — Bounded unknown-state grace
 
-**Decision:** retain an already-needed assertion for at most 30 seconds while reconnecting. Reconciliation cancels the timer; confirmed server exit releases immediately; an unconfirmed state eventually releases to avoid an indefinite assertion.
+**Decision:** retain an already-needed managed-task assertion for at most 30 seconds while reconnecting. Reconciliation cancels the timer; confirmed server exit clears managed-task protection, while an independently enabled desktop-presence input may still keep the one shared assertion active. An unconfirmed managed state eventually releases to avoid an indefinite assertion.
+
+## ADR-011 — Desktop runtime discovery
+
+**Decision:** after a user-selected override, probe the compatible Codex executable bundled in ChatGPT/Codex Desktop before shell and standard CLI paths. Capability probing remains authoritative, so an installed app bundle is not accepted merely by name.

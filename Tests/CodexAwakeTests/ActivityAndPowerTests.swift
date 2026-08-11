@@ -195,6 +195,55 @@ final class ActivityAndPowerTests: XCTestCase {
         XCTAssertFalse(held)
     }
 
+    func testCodexDesktopPresenceAcquiresAssertionWithoutManagedTask() async {
+        let power = MockPowerAssertionController()
+        let coordinator = AwakeCoordinator(power: power)
+        await coordinator.setCodexDesktopRunning(true)
+        let held = await power.assertionIsHeld()
+        XCTAssertTrue(held)
+    }
+
+    func testCodexDesktopExitReleasesAfterDebounce() async {
+        let power = MockPowerAssertionController()
+        let sleeper = ManualSleeper()
+        let coordinator = AwakeCoordinator(power: power, sleeper: sleeper)
+        await coordinator.setCodexDesktopRunning(true)
+        await coordinator.setCodexDesktopRunning(false)
+        await settle()
+        let heldBeforeDebounce = await power.assertionIsHeld()
+        XCTAssertTrue(heldBeforeDebounce)
+        await sleeper.fireAll()
+        await settle()
+        let heldAfterDebounce = await power.assertionIsHeld()
+        XCTAssertFalse(heldAfterDebounce)
+    }
+
+    func testCodexDesktopPresenceCanBeDisabled() async {
+        let power = MockPowerAssertionController()
+        let coordinator = AwakeCoordinator(power: power, keepAwakeForCodexDesktop: false)
+        await coordinator.setCodexDesktopRunning(true)
+        let held = await power.assertionIsHeld()
+        XCTAssertFalse(held)
+    }
+
+    func testAutoKeepAwakeOffOverridesCodexDesktopPresence() async {
+        let power = MockPowerAssertionController()
+        let coordinator = AwakeCoordinator(power: power)
+        await coordinator.setCodexDesktopRunning(true)
+        await coordinator.setAutoKeepAwake(false)
+        let held = await power.assertionIsHeld()
+        XCTAssertFalse(held)
+    }
+
+    func testConfirmedServerStopKeepsAssertionForRunningCodexDesktop() async {
+        let power = MockPowerAssertionController()
+        let coordinator = AwakeCoordinator(power: power)
+        await coordinator.setCodexDesktopRunning(true)
+        await coordinator.serverConfirmedStopped()
+        let held = await power.assertionIsHeld()
+        XCTAssertTrue(held)
+    }
+
     func testExitReleasesAssertion() async {
         let power = MockPowerAssertionController()
         let coordinator = AwakeCoordinator(power: power)

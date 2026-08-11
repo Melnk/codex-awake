@@ -2,11 +2,13 @@ import Combine
 import Foundation
 
 public struct DiagnosticsSnapshot: Equatable, Sendable {
-    public var appVersion = "1.1.0 (2)"
+    public var appVersion = "1.2.0 (3)"
     public var macOSVersion = ProcessInfo.processInfo.operatingSystemVersionString
     public var architecture = "unknown"
     public var codexPath: String?
     public var codexVersion: String?
+    public var codexDesktopRunning = false
+    public var keepAwakeForCodexDesktop = true
     public var transport = "Unix domain socket (WebSocket upgrade)"
     public var endpoint: String?
     public var appServerState: AppServerState = .stopped
@@ -34,6 +36,8 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
         Architecture: \(architecture)
         Codex path: \(codexPath ?? "not found")
         Codex version: \(codexVersion ?? "unknown")
+        Codex desktop app: \(codexDesktopRunning ? "running" : "not running")
+        Keep awake for Codex desktop: \(keepAwakeForCodexDesktop ? "enabled" : "disabled")
         Transport: \(transport)
         Endpoint: \(endpoint ?? "unavailable")
         App Server: \(appServerState.rawValue)
@@ -50,7 +54,7 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
         Reconnects: \(reconnectCount)
         Last safe error: \(lastSafeError ?? "none")
 
-        Scope: cockpit tasks and Codex CLI/TUI sessions connected to the App Server managed by CodexAwake are tracked. Independent CLI, ChatGPT/Codex desktop, cloud, other-user, and remote-host sessions are not tracked.
+        Scope: managed tasks are tracked individually. Codex desktop process presence is tracked separately; its independent task contents and statuses remain private. Independent CLI, cloud, other-user, and remote-host sessions are not tracked.
         Closed lid: CodexAwake prevents idle system sleep; it does not bypass macOS lid-close sleep policy.
         """
     }

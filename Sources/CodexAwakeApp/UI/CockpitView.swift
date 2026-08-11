@@ -58,10 +58,10 @@ struct CockpitView: View {
 
             HStack(spacing: 10) {
                 InstrumentCard(
-                    label: "APP SERVER",
-                    value: model.appServerState.rawValue.uppercased(),
-                    icon: "point.3.connected.trianglepath.dotted",
-                    accent: serverAccent
+                    label: "CODEX APP",
+                    value: model.codexDesktopRunning ? "ON" : "OFF",
+                    icon: "macwindow",
+                    accent: model.codexDesktopRunning ? CockpitPalette.ice : CockpitPalette.muted
                 )
                 InstrumentCard(
                     label: "ACTIVE TASKS",
@@ -73,6 +73,14 @@ struct CockpitView: View {
 
             activeTasks
             externalChatGPTNotice
+            Toggle("Keep awake while Codex App is running", isOn: Binding(
+                get: { model.keepAwakeForCodexDesktop },
+                set: { model.setKeepAwakeForCodexDesktop($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(CockpitPalette.silver)
             Spacer(minLength: 4)
 
             HStack(spacing: 10) {
@@ -234,13 +242,13 @@ struct CockpitView: View {
 
     private var externalChatGPTNotice: some View {
         HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "lock.shield")
-                .foregroundStyle(CockpitPalette.silver)
+            Image(systemName: model.codexDesktopRunning ? "dot.radiowaves.left.and.right" : "power")
+                .foregroundStyle(model.codexDesktopRunning ? CockpitPalette.ice : CockpitPalette.silver)
             VStack(alignment: .leading, spacing: 3) {
-                Text("CHATGPT DESKTOP · EXTERNAL")
+                Text("CODEX DESKTOP · PRESENCE")
                     .font(.system(size: 9, weight: .semibold, design: .rounded))
                     .tracking(1)
-                Text("Independent ChatGPT chats are private and are not exposed to third-party monitoring. Only tasks connected to this cockpit are counted.")
+                Text(codexDesktopPresenceDescription)
                     .font(.system(size: 10))
                     .foregroundStyle(CockpitPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -372,64 +380,93 @@ struct CockpitView: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            ZStack(alignment: .topLeading) {
-                if prompt.isEmpty {
-                    Text("Ask Codex to inspect, explain, build, or fix…")
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .bottom, spacing: 12) {
+                ZStack(alignment: .topLeading) {
+                    if prompt.isEmpty {
+                        Text("Ask Codex to inspect, explain, build, or fix…")
+                            .font(.system(size: 13))
+                            .foregroundStyle(CockpitPalette.muted.opacity(0.75))
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 14)
+                            .allowsHitTesting(false)
+                    }
+                    TextEditor(text: $prompt)
                         .font(.system(size: 13))
-                        .foregroundStyle(CockpitPalette.muted.opacity(0.75))
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 14)
-                        .allowsHitTesting(false)
+                        .scrollContentBackground(.hidden)
+                        .focused($promptFocused)
+                        .frame(minHeight: 54, maxHeight: 110)
+                        .padding(7)
+                        .onKeyPress(keys: [.return], phases: .down) { press in
+                            guard !press.modifiers.contains(.shift) else { return .ignored }
+                            guard canAttemptSend else { return .handled }
+                            submitPrompt()
+                            return .handled
+                        }
                 }
-                TextEditor(text: $prompt)
-                    .font(.system(size: 13))
-                    .scrollContentBackground(.hidden)
-                    .focused($promptFocused)
-                    .frame(minHeight: 54, maxHeight: 110)
-                    .padding(7)
-            }
-            .background(CockpitPalette.panelRaised.opacity(0.82), in: RoundedRectangle(cornerRadius: 15))
-            .overlay(RoundedRectangle(cornerRadius: 15).stroke(CockpitPalette.silver.opacity(0.16)))
+                .background(CockpitPalette.panelRaised.opacity(0.82), in: RoundedRectangle(cornerRadius: 15))
+                .overlay(RoundedRectangle(cornerRadius: 15).stroke(CockpitPalette.silver.opacity(0.16)))
 
-            if model.chatIsSending {
-                Button {
-                    model.interruptChat()
-                } label: {
-                    Image(systemName: "stop.fill")
-                        .frame(width: 38, height: 38)
+                if model.chatIsSending {
+                    Button {
+                        model.interruptChat()
+                    } label: {
+                        Image(systemName: "stop.fill")
+                            .frame(width: 38, height: 38)
+                    }
+                    .buttonStyle(CockpitDangerButtonStyle())
+                    .disabled(model.chatTurnID == nil)
+                    .help("Stop current task")
+                } else {
+                    Button {
+                        submitPrompt()
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 38, height: 38)
+                    }
+                    .buttonStyle(CockpitPrimaryButtonStyle())
+                    .disabled(!canAttemptSend)
+                    .help(model.chatUnavailableReason ?? "Send to Codex")
                 }
-                .buttonStyle(CockpitDangerButtonStyle())
-                .disabled(model.chatTurnID == nil)
-                .help("Stop current task")
-            } else {
-                Button {
-                    submitPrompt()
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 16, weight: .semibold))
-                        .frame(width: 38, height: 38)
-                }
-                .buttonStyle(CockpitPrimaryButtonStyle())
-                .disabled(!canSubmit)
-                .keyboardShortcut(.return, modifiers: [.command])
-                .help("Send to Codex (Command-Return)")
             }
+
+            HStack(spacing: 6) {
+                Image(systemName: model.chatUnavailableReason == nil ? "return" : "exclamationmark.circle")
+                Text(composerStatusText)
+            }
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(model.chatUnavailableReason == nil ? CockpitPalette.muted : CockpitPalette.amber)
+            .padding(.leading, 9)
         }
         .padding(.top, 13)
         .padding(.horizontal, 5)
     }
 
-    private var canSubmit: Bool {
+    private var canAttemptSend: Bool {
         !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && model.workspacePath != nil
-            && model.appServerState == .running
             && !model.chatIsSending
+    }
+
+    private var composerStatusText: String {
+        model.chatUnavailableReason ?? "Enter to send · Shift+Enter for a new line"
+    }
+
+    private var codexDesktopPresenceDescription: String {
+        if model.codexDesktopRunning {
+            return model.keepAwakeForCodexDesktop
+                ? "Codex is running. With the main power ON, its presence keeps this Mac awake. Individual external task details remain private."
+                : "Codex is running, but presence-based sleep protection is disabled. Individual external task details remain private."
+        }
+        return "Codex is not running. Launch ChatGPT/Codex to enable presence-based sleep protection."
     }
 
     private var powerSubtitle: String {
         guard model.autoKeepAwake else { return "automatic sleep protection disabled" }
-        return model.assertionHeld ? "idle sleep protection engaged" : "armed for active Codex tasks"
+        if model.assertionHeld, model.codexDesktopRunning, model.keepAwakeForCodexDesktop {
+            return "Codex Desktop detected · protection engaged"
+        }
+        return model.assertionHeld ? "idle sleep protection engaged" : "armed for Codex work"
     }
 
     private var serverAccent: Color {
@@ -451,15 +488,15 @@ struct CockpitView: View {
             return "Choose a working folder. Codex will be limited to that workspace and will ask before sensitive actions."
         }
         if model.appServerState != .running {
-            return "The managed Codex App Server is not ready. Install or select Codex CLI, then restart the server."
+            return "The managed Codex App Server is starting. CodexAwake can use the runtime bundled with ChatGPT/Codex automatically."
         }
         return "This console uses your existing Codex authentication through the local App Server. No API key is stored by CodexAwake."
     }
 
     private func submitPrompt() {
-        let submitted = prompt
-        prompt = ""
-        model.sendPrompt(submitted)
+        if model.sendPrompt(prompt) {
+            prompt = ""
+        }
     }
 
     private func abbreviated(_ value: String) -> String {

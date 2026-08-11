@@ -9,6 +9,7 @@ struct MenuContentView: View {
             .font(.headline)
         Text("App Server: \(model.appServerState.rawValue.capitalized)")
         Text("Codex: \(model.codexVersion ?? "Not found")")
+        Text("Codex Desktop: \(model.codexDesktopRunning ? "Running" : "Not Running")")
         Text("Active threads: \(model.activity.activeCount)")
         Text("Keep Awake: \(model.assertionHeld ? "ON" : "OFF")")
 
@@ -19,7 +20,7 @@ struct MenuContentView: View {
         if !model.firstRunAcknowledged {
             Divider()
             Text("Tracks cockpit tasks and Codex CLI/TUI sessions connected to this app's managed App Server.")
-            Text("Independent ChatGPT Desktop chats are not exposed to third-party monitoring.")
+            Text("Detects whether Codex Desktop is running, without reading its independent chats.")
             Text("It prevents idle sleep; it does not bypass lid-close sleep.")
             Button("I Understand") { model.acknowledgeFirstRun() }
                 .accessibilityLabel("Acknowledge CodexAwake tracking scope")
@@ -35,7 +36,7 @@ struct MenuContentView: View {
 
         Divider()
         Text("Managed CodexAwake tasks are tracked")
-        Text("Independent ChatGPT Desktop chats are private")
+        Text("Codex Desktop presence is tracked; its tasks stay private")
         Text("Prevents idle sleep only; lid-close policy still applies")
         Button("Open Cockpit…") { openWindow(id: "cockpit") }
             .keyboardShortcut("k")
@@ -52,6 +53,10 @@ struct MenuContentView: View {
         Toggle("Auto Keep Awake", isOn: Binding(
             get: { model.autoKeepAwake },
             set: { model.setAutoKeepAwake($0) }
+        ))
+        Toggle("Keep Awake while Codex App is Running", isOn: Binding(
+            get: { model.keepAwakeForCodexDesktop },
+            set: { model.setKeepAwakeForCodexDesktop($0) }
         ))
         Toggle("Launch at Login", isOn: Binding(
             get: { model.launchAtLogin },

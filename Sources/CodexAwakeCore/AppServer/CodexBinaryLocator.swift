@@ -29,6 +29,7 @@ public struct CodexBinaryLocator: CodexBinaryLocating, @unchecked Sendable {
         if let custom = defaults.string(forKey: Self.userDefaultsKey), !custom.isEmpty {
             candidates.append(custom)
         }
+        candidates += Self.bundledCodexCandidates(homeDirectory: fileManager.homeDirectoryForCurrentUser)
         if let shellPath = try? await Self.capture(
             executable: "/bin/zsh",
             arguments: ["-lic", "command -v codex"],
@@ -43,17 +44,35 @@ public struct CodexBinaryLocator: CodexBinaryLocating, @unchecked Sendable {
             fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".codex/bin/codex").path
         ]
 
+        var lastCompatibilityError: Error?
         for candidate in candidates.uniqued() where fileManager.isExecutableFile(atPath: candidate) {
-            let version = try await Self.capture(executable: candidate, arguments: ["--version"], timeout: .seconds(5))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let mainHelp = try await Self.capture(executable: candidate, arguments: ["--help"], timeout: .seconds(5))
-            let help = try await Self.capture(executable: candidate, arguments: ["app-server", "--help"], timeout: .seconds(5))
-            guard Self.isCompatible(mainHelp: mainHelp, appServerHelp: help) else {
-                throw CodexAwakeError.incompatibleCodex("help does not advertise both `--remote` and Unix socket App Server listening")
+            do {
+                let version = try await Self.capture(executable: candidate, arguments: ["--version"], timeout: .seconds(5))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let mainHelp = try await Self.capture(executable: candidate, arguments: ["--help"], timeout: .seconds(5))
+                let help = try await Self.capture(executable: candidate, arguments: ["app-server", "--help"], timeout: .seconds(5))
+                guard Self.isCompatible(mainHelp: mainHelp, appServerHelp: help) else {
+                    lastCompatibilityError = CodexAwakeError.incompatibleCodex(
+                        "help does not advertise both `--remote` and Unix socket App Server listening"
+                    )
+                    continue
+                }
+                return CodexBinaryInfo(path: candidate, version: version)
+            } catch {
+                lastCompatibilityError = error
             }
-            return CodexBinaryInfo(path: candidate, version: version)
         }
+        if let lastCompatibilityError { throw lastCompatibilityError }
         throw CodexAwakeError.codexNotFound
+    }
+
+    public static func bundledCodexCandidates(homeDirectory: URL) -> [String] {
+        let relativePaths = [
+            "ChatGPT.app/Contents/Resources/codex",
+            "Codex.app/Contents/Resources/codex"
+        ]
+        return relativePaths.map { "/Applications/\($0)" }
+            + relativePaths.map { homeDirectory.appendingPathComponent("Applications/\($0)").path }
     }
 
     public func saveUserSelectedPath(_ path: String) throws {

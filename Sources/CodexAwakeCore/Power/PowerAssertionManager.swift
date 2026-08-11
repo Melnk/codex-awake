@@ -13,7 +13,7 @@ public actor PowerAssertionManager: PowerAssertionControlling {
     private var assertionID: IOPMAssertionID?
     private let reason: String
 
-    public init(reason: String = "CodexAwake: active Codex turns") {
+    public init(reason: String = "CodexAwake: active Codex work or Codex desktop app") {
         self.reason = reason
     }
 

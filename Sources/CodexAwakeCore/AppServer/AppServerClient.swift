@@ -60,7 +60,7 @@ public actor AppServerClient {
                     "clientInfo": .object([
                         "name": .string("codex_awake"),
                         "title": .string("CodexAwake"),
-                        "version": .string("1.1.0")
+                        "version": .string("1.2.0")
                     ])
                 ])
             )
@@ -102,7 +102,7 @@ public actor AppServerClient {
             params: .object([
                 "cwd": .string(cwd),
                 "approvalPolicy": .string("unlessTrusted"),
-                "sandbox": .string("workspaceWrite"),
+                "sandbox": .string("workspace-write"),
                 "serviceName": .string("codex_awake")
             ])
         )

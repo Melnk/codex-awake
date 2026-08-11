@@ -17,6 +17,8 @@ final class AppModel: ObservableObject {
     @Published var launchAtLogin = false
     @Published var firstRunAcknowledged: Bool
     @Published var autoKeepAwake: Bool
+    @Published var codexDesktopRunning = false
+    @Published var keepAwakeForCodexDesktop: Bool
     @Published var workspacePath: String?
     @Published var chatMessages: [CodexChatMessage] = []
     @Published var chatThreadID: String?
@@ -38,6 +40,7 @@ final class AppModel: ObservableObject {
     private var client: AppServerClient?
     private var runtime: SocketPathManager.Runtime?
     private var connectionLoopTask: Task<Void, Never>?
+    private var workspaceObserverTokens: [NSObjectProtocol] = []
     private var isShuttingDown = false
     private var chatGenerationID: UUID?
     private var approvalContinuations: [Int: CheckedContinuation<JSONValue, Never>] = [:]
@@ -47,7 +50,9 @@ final class AppModel: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         let auto = defaults.object(forKey: "AutoKeepAwake") as? Bool ?? true
+        let keepForDesktop = defaults.object(forKey: "KeepAwakeForCodexDesktop") as? Bool ?? true
         autoKeepAwake = auto
+        keepAwakeForCodexDesktop = keepForDesktop
         firstRunAcknowledged = defaults.bool(forKey: "FirstRunAcknowledged")
         if let savedWorkspace = defaults.string(forKey: "CodexWorkspacePath"),
            FileManager.default.fileExists(atPath: savedWorkspace) {
@@ -55,13 +60,18 @@ final class AppModel: ObservableObject {
         } else {
             workspacePath = nil
         }
-        coordinator = AwakeCoordinator(power: power, autoKeepAwake: auto)
+        coordinator = AwakeCoordinator(
+            power: power,
+            autoKeepAwake: auto,
+            keepAwakeForCodexDesktop: keepForDesktop
+        )
         launchAtLogin = launchManager.isEnabled
     }
 
     func start() {
         guard connectionLoopTask == nil else { return }
         logger.notice("CodexAwake lifecycle started")
+        startCodexDesktopMonitoring()
         Task { await startManagedServer() }
     }
 
@@ -114,6 +124,15 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.set(enabled, forKey: "AutoKeepAwake")
         Task {
             await coordinator.setAutoKeepAwake(enabled)
+            await refreshPublishedState()
+        }
+    }
+
+    func setKeepAwakeForCodexDesktop(_ enabled: Bool) {
+        keepAwakeForCodexDesktop = enabled
+        UserDefaults.standard.set(enabled, forKey: "KeepAwakeForCodexDesktop")
+        Task {
+            await coordinator.setKeepAwakeForCodexDesktop(enabled)
             await refreshPublishedState()
         }
     }
@@ -207,13 +226,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func sendPrompt(_ prompt: String) {
+    @discardableResult
+    func sendPrompt(_ prompt: String) -> Bool {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty,
-              !chatIsSending,
-              let workspacePath,
-              appServerState == .running,
-              let client else { return }
+        guard !text.isEmpty, !chatIsSending else { return false }
+        guard let workspacePath, appServerState == .running, let client else {
+            appendSystemMessage(chatUnavailableReason ?? "Codex is not ready yet.")
+            return false
+        }
 
         let generationID = UUID()
         chatGenerationID = generationID
@@ -239,6 +259,7 @@ final class AppModel: ObservableObject {
                 appendSystemMessage(SafeDisplay.sanitizedError(error))
             }
         }
+        return true
     }
 
     func interruptChat() {
@@ -275,6 +296,7 @@ final class AppModel: ObservableObject {
     func shutdown() async {
         guard !isShuttingDown else { return }
         isShuttingDown = true
+        stopCodexDesktopMonitoring()
         cancelPendingApprovals()
         connectionLoopTask?.cancel()
         connectionLoopTask = nil
@@ -289,6 +311,22 @@ final class AppModel: ObservableObject {
     private func beginConnectionLoopIfNeeded() {
         guard connectionLoopTask == nil else { return }
         connectionLoopTask = Task { [weak self] in await self?.connectionLoop() }
+    }
+
+    var chatUnavailableReason: String? {
+        if workspacePath == nil {
+            return "Choose a project folder before sending a message."
+        }
+        if appServerState != .running {
+            if codexPath == nil {
+                return "Codex runtime is not ready. Restart the server or choose a Codex binary in Diagnostics."
+            }
+            return "Codex App Server is \(appServerState.rawValue). Wait for READY or press Restart."
+        }
+        if client == nil {
+            return "Codex is connecting. Try again in a moment."
+        }
+        return nil
     }
 
     private func connectionLoop() async {
@@ -411,10 +449,12 @@ final class AppModel: ObservableObject {
 
     private func updateDiagnostics() {
         var value = DiagnosticsSnapshot()
-        value.appVersion = "1.1.0 (2)"
+        value.appVersion = "1.2.0 (3)"
         value.architecture = Self.architecture
         value.codexPath = codexPath
         value.codexVersion = codexVersion
+        value.codexDesktopRunning = codexDesktopRunning
+        value.keepAwakeForCodexDesktop = keepAwakeForCodexDesktop
         value.endpoint = endpoint
         value.appServerState = appServerState
         value.serverPID = serverPID
@@ -426,6 +466,39 @@ final class AppModel: ObservableObject {
         value.reconnectCount = reconnectCount
         value.lastSafeError = lastSafeError
         diagnostics.snapshot = value
+    }
+
+    private func startCodexDesktopMonitoring() {
+        guard workspaceObserverTokens.isEmpty else {
+            refreshCodexDesktopPresence()
+            return
+        }
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.refreshCodexDesktopPresence() }
+            }
+            workspaceObserverTokens.append(token)
+        }
+        refreshCodexDesktopPresence()
+    }
+
+    private func stopCodexDesktopMonitoring() {
+        let center = NSWorkspace.shared.notificationCenter
+        for token in workspaceObserverTokens { center.removeObserver(token) }
+        workspaceObserverTokens.removeAll()
+    }
+
+    private func refreshCodexDesktopPresence() {
+        let supportedBundleIDs: Set<String> = ["com.openai.codex", "com.openai.chat"]
+        let running = NSWorkspace.shared.runningApplications.contains { application in
+            application.bundleIdentifier.map(supportedBundleIDs.contains) ?? false
+        }
+        codexDesktopRunning = running
+        Task {
+            await coordinator.setCodexDesktopRunning(running)
+            await refreshPublishedState()
+        }
     }
 
     private func handleChatEvent(_ event: AppServerEvent) {

@@ -100,6 +100,7 @@ final class ProtocolAndLifecycleTests: XCTestCase {
         let sent = transport.sent.joined(separator: "\n")
         XCTAssertTrue(sent.contains("\"method\":\"thread/start\""))
         XCTAssertTrue(sent.contains("\"approvalPolicy\":\"unlessTrusted\""))
+        XCTAssertTrue(sent.contains("\"sandbox\":\"workspace-write\""))
         XCTAssertTrue(sent.contains("\"writableRoots\":[\"/tmp/project\"]"))
         XCTAssertTrue(sent.contains("Inspect the project"))
         await client.disconnect()
@@ -214,6 +215,14 @@ final class ProtocolAndLifecycleTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? CodexAwakeError, .codexNotFound)
         }
+    }
+
+    func testBundledCodexCandidatesIncludeInstalledChatGPTRuntime() {
+        let candidates = CodexBinaryLocator.bundledCodexCandidates(
+            homeDirectory: URL(fileURLWithPath: "/Users/tester")
+        )
+        XCTAssertTrue(candidates.contains("/Applications/ChatGPT.app/Contents/Resources/codex"))
+        XCTAssertTrue(candidates.contains("/Users/tester/Applications/ChatGPT.app/Contents/Resources/codex"))
     }
 
     func testCommandEscapesShellArguments() {

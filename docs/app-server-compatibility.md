@@ -14,7 +14,7 @@ codex app-server generate-json-schema --out .build/codex-schema/json
 codex app-server generate-ts --out .build/codex-schema/typescript
 ```
 
-On the development machine used for this checkout on 2026-08-11, all three `codex` preflight commands returned `command not found`, including login-shell and fixed-path checks. Schema generation and a real server launch were therefore not performed. No minimum real Codex version is claimed as tested. `.build/codex-schema/` is ignored and generated dumps must not be committed unless a small compile-time model is deliberately selected.
+On the development machine used for this checkout on 2026-08-11, the standalone `codex` command was absent from PATH, but CodexAwake discovered `/Applications/ChatGPT.app/Contents/Resources/codex` (`codex-cli 0.147.0-alpha.6.5`). That bundled runtime passed the capability probes, generated the local schema, launched a real Unix-socket App Server from the GUI application, and completed `initialize`/`initialized` without sending a model prompt. No minimum version is inferred from that single runtime. `.build/codex-schema/` is ignored and generated dumps must not be committed unless a small compile-time model is deliberately selected.
 
 The implementation was compared with the current [official Codex App Server documentation](https://learn.chatgpt.com/docs/app-server), which documents:
 
@@ -41,6 +41,8 @@ CodexAwake accepts a binary only when:
 
 The exact version string is displayed but is not used as a substitute for capabilities. Incompatible versions produce a user-visible safe error and no server is launched.
 
+The runtime's generated `ThreadStartParams` schema and its live validation require the kebab-case request value `workspace-write`. Camel-case `workspaceWrite` appears in response/config models but is rejected for `thread/start`; a regression test asserts the request spelling.
+
 ## Experimental surface
 
 The App Server command and transport are described by OpenAI as experimental. CodexAwake does not set `capabilities.experimentalApi`. Its observation path uses methods currently available without that flag. The optional `thread/turns/list`, `thread/items/list`, process APIs, and experimental filters are not used.
@@ -49,7 +51,7 @@ When protocol drift causes decoding or a method error, CodexAwake keeps prompts 
 
 ## Multi-client semantics
 
-Automated tests simulate multiple clients and notification/reconciliation behavior. A real installed Codex CLI was unavailable, so notification fan-out between an observer client and turns started by another TUI is not claimed as experimentally verified in this checkout. Correctness does not depend on notification broadcast: periodic `thread/loaded/list` + `thread/read` reconciliation remains the source of truth.
+Automated tests simulate multiple clients and notification/reconciliation behavior. A real bundled runtime was used for a quota-free server handshake, but notification fan-out between an observer client and turns started by another TUI is not claimed as experimentally verified because that requires a real model turn. Correctness does not depend on notification broadcast: periodic `thread/loaded/list` + `thread/read` reconciliation remains the source of truth.
 
 Run the read-only real check after installing/updating Codex:
 

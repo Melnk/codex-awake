@@ -1,21 +1,21 @@
 # CodexAwake
 
-CodexAwake is a native macOS menu bar utility and Codex cockpit. It launches its own local Codex App Server, provides a streamed chat UI for Codex, and prevents **idle system sleep** while that server reports one or more active Codex threads.
+CodexAwake is a native macOS menu bar utility and Codex cockpit. It launches its own local Codex App Server, provides a streamed chat UI for Codex, and prevents **idle system sleep** while that server reports active Codex work or while the Codex desktop app is running.
 
-It uses the official App Server protocol rather than guessing from process existence, CPU usage, windows, or file timestamps. CodexAwake owns at most one `PreventUserIdleSystemSleep` assertion, whether one or ten managed chats are active. The display may still turn off.
+It uses the official App Server protocol for managed-task state and the desktop app's bundle identifier only for a separate ON/OFF presence signal. It does not infer individual desktop-task state from CPU usage, windows, or file timestamps. CodexAwake owns at most one `PreventUserIdleSystemSleep` assertion. The display may still turn off.
 
 > [!IMPORTANT]
-> CodexAwake tracks its own cockpit tasks and Codex CLI/TUI sessions connected with `--remote` to the App Server launched by CodexAwake. The independent ChatGPT desktop app does not publish an API that lets another local app enumerate its open chats or active turns, so CodexAwake does not claim to monitor them. It also does not track ordinary CLI sessions, Codex Cloud, another user's processes, or remote hosts that are not connected to this managed server.
+> CodexAwake tracks its own cockpit tasks and Codex CLI/TUI sessions connected with `--remote` to the App Server launched by CodexAwake. It also detects whether ChatGPT/Codex Desktop is running and can keep the Mac awake for that entire time. The desktop app does not publish an API that lets another local app enumerate its independent open chats or active turns, so those details are not shown as managed tasks. Ordinary CLI sessions, Codex Cloud, another user's processes, and remote hosts remain out of scope unless they connect to the managed server.
 
 ## Cockpit
 
 Open **Open Cockpit…** from the menu bar. The dark graphite and silver native SwiftUI interface includes:
 
 - a large illuminated **ON/OFF** control for automatic sleep protection;
-- App Server, assertion, and active managed-task instruments;
+- Codex Desktop presence, assertion, and active managed-task instruments;
 - the IDs of all active tasks connected to the managed server;
 - a project picker and streamed Codex conversation;
-- **New task**, **Stop**, and Command-Return send controls;
+- **New task**, **Stop**, Enter-to-send, Shift-Enter newline, and arrow-button controls;
 - approval cards for shell commands, network access, and file changes.
 
 The cockpit uses the authenticated [Codex App Server](https://learn.chatgpt.com/docs/app-server), not a separately stored API key. Select a project folder before starting a task. Codex is given workspace-write access to that folder and uses the `unlessTrusted` approval policy; approval prompts remain visible while the task is active.
@@ -23,25 +23,9 @@ The cockpit uses the authenticated [Codex App Server](https://learn.chatgpt.com/
 ## How it works
 
 ```text
-Codex CLI #1 ─┐
-Codex CLI #2 ─┤
-Codex CLI #3 ─┤
-              ↓
-   CodexAwake-managed
-    Codex App Server
-              ↓
-   App Server protocol
-              ↓
-  ThreadActivityTracker
-              ↓
-   active threads > 0?
-       /            \
-     yes             no
-      ↓               ↓
-ONE assertion       release
-      ↓
- prevent idle
- system sleep
+Cockpit / connected CLI ─→ managed App Server ─→ active-task state ─┐
+                                                                   ├─→ ONE idle-sleep assertion
+Codex Desktop bundle ID ───────────────────────→ ON/OFF presence ───┘
 ```
 
 The runtime status returned by `thread/read` is the source of truth. Notifications (`turn/started`, `turn/completed`, `thread/status/changed`, and `thread/closed`) reduce latency; `thread/loaded/list` plus `thread/read` reconcile state at connection, reconnection, and every 10 seconds.
@@ -54,25 +38,26 @@ Tracked:
 - Codex CLI/TUI clients launched with the menu's **Open Codex** action;
 - clients started manually with the command from **Copy Codex command**;
 - multiple clients connected to the same CodexAwake-managed endpoint;
-- active statuses including `waitingOnApproval`.
+- active statuses including `waitingOnApproval`;
+- whether ChatGPT/Codex Desktop is currently running.
 
 Not tracked:
 
 - `codex` started without `--remote`;
-- independent Codex or ChatGPT desktop activity;
+- individual conversations, prompts, and active-turn state inside the independent Codex Desktop app;
 - Codex Cloud jobs;
 - other users' processes;
 - unrelated App Server processes;
 - remote machines not using the displayed endpoint.
 
-The first-run menu, cockpit, Diagnostics window, and controls beside **Open Codex** repeat this boundary. CodexAwake deliberately does not treat the mere presence of a ChatGPT process as active work.
+The first-run menu, cockpit, and Diagnostics window repeat this boundary. Desktop presence is shown as `CODEX APP ON/OFF`, never added to the managed-task count. With both power controls enabled, presence is intentionally sufficient to keep the Mac awake even though it is not presented as proof of an active turn.
 
 ## Requirements
 
 - macOS 14 or later;
 - Apple silicon or Intel Mac;
 - full Xcode for source builds (tested with Xcode 26.6 / Swift 6.3.3);
-- a Codex CLI whose help advertises both `codex --remote` and `codex app-server --listen unix://`.
+- ChatGPT/Codex Desktop with a compatible bundled runtime, or a standalone Codex CLI whose help advertises both `codex --remote` and `codex app-server --listen unix://`.
 
 No third-party packages are used. The application uses SwiftUI, Foundation, Swift Concurrency, OSLog, ServiceManagement, AppKit, CryptoKit, Darwin Unix sockets, and IOKit.
 
@@ -100,21 +85,22 @@ CONFIGURATION=debug scripts/build_app.sh
 
 CodexAwake has no Dock icon (`LSUIElement=true`). The cockpit opens automatically at launch; after closing it, reopen it from the bolt menu with **Open Cockpit…** or launch the `.app` again. On first launch the menu shows these facts:
 
-1. cockpit tasks and sessions connected to its managed `--remote` endpoint are tracked;
-2. independent ChatGPT Desktop chats are not visible to third-party monitoring;
+1. cockpit tasks and sessions connected to its managed `--remote` endpoint are tracked individually;
+2. Codex Desktop process presence is detected, but its independent chats remain private;
 3. the application prevents idle sleep and does not bypass lid-close sleep policy.
 
-If Codex cannot be found, the menu shows `Codex: Not found` and App Server state `Failed`. Open **Diagnostics… → Choose Codex Binary…** to select an executable.
+CodexAwake first tries the runtime bundled inside an installed ChatGPT/Codex app. If no compatible runtime can be found, the menu shows `Codex: Not found` and App Server state `Failed`; open **Diagnostics… → Choose Codex Binary…** to select an executable.
 
 ## Codex binary discovery
 
 The locator checks, in order:
 
 1. a user-selected path saved in `UserDefaults`;
-2. `command -v codex` in a login zsh;
-3. `/opt/homebrew/bin/codex`;
-4. `/usr/local/bin/codex`;
-5. `~/.local/bin/codex` and `~/.codex/bin/codex`.
+2. the runtime bundled in `/Applications/ChatGPT.app` or `/Applications/Codex.app`, including per-user Applications equivalents;
+3. `command -v codex` in a login zsh;
+4. `/opt/homebrew/bin/codex`;
+5. `/usr/local/bin/codex`;
+6. `~/.local/bin/codex` and `~/.codex/bin/codex`.
 
 It runs read-only `--version` and help probes. It does not modify shell startup files or global Codex configuration.
 
@@ -147,17 +133,18 @@ The command contains no capability token or credential. The endpoint changes onl
 
 **Auto Keep Awake** defaults to on. With it enabled:
 
+- if **Keep awake while Codex App is running** is enabled, Codex Desktop presence acquires the assertion even when no managed task is visible;
 - `0 → 1+` active managed threads acquires one assertion;
 - additional active threads reuse that assertion;
-- `1+ → 0` releases after a one-second debounce;
+- desktop exit or `1+ → 0` managed threads releases after a one-second debounce when no other source still requires protection;
 - `waitingOnApproval` remains active;
 - `idle`, `notLoaded`, and `systemError` are inactive.
 
-Turning the setting off releases the assertion but activity remains visible. CodexAwake does not expose a default-on manual or indefinite force-awake mode.
+The large main power control overrides both sources and releases immediately when switched off. The separate desktop-presence toggle leaves precise managed-task protection enabled. CodexAwake does not expose a default-on manual or indefinite force-awake mode.
 
 ## Reconnect and fail-safe policy
 
-If the observer connection drops while work may be active, state becomes **Activity unknown / reconnecting**. The assertion is retained for at most 30 seconds while the client reconnects and reconciles. A confirmed App Server exit releases immediately. If activity cannot be confirmed by the grace deadline, CodexAwake releases rather than keeping the Mac awake forever.
+If the observer connection drops while managed work may be active, state becomes **Activity unknown / reconnecting**. The assertion is retained for at most 30 seconds while the client reconnects and reconciles. A confirmed App Server exit clears managed-task protection; desktop-presence protection remains if enabled and Codex Desktop is still running. If neither source can be confirmed, CodexAwake releases rather than keeping the Mac awake forever.
 
 The supervisor distinguishes requested stop from crash, drains child stdout/stderr without logging their contents, reaps the child, and restarts unexpected exits with capped exponential backoff. It never searches for or kills unrelated Codex processes.
 
@@ -180,7 +167,7 @@ It excludes prompts, model responses, diffs, tool output, terminal output, file 
 
 ## Verify the assertion
 
-1. Launch CodexAwake and confirm `App Server: Running`.
+1. Launch CodexAwake and confirm `App Server: Running` and the expected `Codex Desktop` presence state.
 2. Use **Copy Codex command** and run it in a terminal.
 3. Start a safe test turn (this is the only step that can consume model quota).
 4. Confirm the menu shows an active thread and `Keep Awake: ON`.
@@ -217,7 +204,7 @@ Some Codex versions may expose their own experimental prevent-idle-sleep feature
 
 App Server is an evolving protocol. CodexAwake performs runtime capability checks instead of accepting a version number alone. The implementation uses stable non-experimental methods in the current official schema: `initialize`, `initialized`, `thread/loaded/list`, `thread/read`, and status/turn/thread notifications. It does not request `capabilities.experimentalApi`.
 
-This checkout was developed on a machine where the Codex CLI was not present in PATH or the standard supported locations, so no real CLI version or real multi-client broadcast behavior is claimed as locally verified. The fake-server suite validates the wire/state logic. After installing Codex, run the read-only opt-in handshake:
+The ChatGPT-bundled Codex runtime `0.147.0-alpha.6.5` was discovered and used to validate a real local App Server launch and `initialize`/`initialized` handshake on 2026-08-11. No model prompt was sent during that check. Real multi-client notification fan-out still requires an explicit quota-consuming manual turn and is not claimed as verified. The fake-server suite validates the remaining wire/state logic. Run the read-only handshake after updating Codex:
 
 ```bash
 scripts/real_app_server_test.sh
@@ -240,6 +227,7 @@ The test suite wraps power management behind `PowerAssertionControlling`; tests 
 
 **Codex not found**
 
+- Confirm ChatGPT/Codex is installed in `/Applications`, or:
 - Run `command -v codex` and `codex --version` in a login shell.
 - Choose the executable in Diagnostics.
 - Confirm `codex --help` includes `--remote` and `codex app-server --help` includes Unix `--listen` syntax.
@@ -254,7 +242,14 @@ The test suite wraps power management behind `PowerAssertionControlling`; tests 
 
 - Confirm the TUI was started with the exact copied `--remote` command.
 - Wait up to the 10-second reconciliation interval.
-- Independent desktop/cloud/plain CLI activity is intentionally out of scope.
+- A task from the independent Codex Desktop app is represented only by `CODEX APP ON`; its individual turn is not included in `ACTIVE TASKS`.
+- Independent cloud and plain CLI activity is intentionally out of scope.
+
+**Chat send fails**
+
+- Confirm the header says `READY` and a project is selected.
+- Enter sends, Shift-Enter inserts a newline, and the arrow button uses the same action.
+- If the server is not ready, the composer preserves the draft and shows the exact readiness reason instead of silently doing nothing.
 
 **Assertion seems duplicated**
 
