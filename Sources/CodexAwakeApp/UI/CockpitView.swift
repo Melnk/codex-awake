@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 private enum CockpitPalette {
@@ -48,20 +49,11 @@ struct CockpitView: View {
 
     private var topBar: some View {
         HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [CockpitPalette.violetSoft, CockpitPalette.iceDeep],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 44, height: 44)
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 48, height: 48)
             .shadow(color: CockpitPalette.ice.opacity(0.24), radius: 14, y: 7)
 
             VStack(alignment: .leading, spacing: 2) {

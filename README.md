@@ -1,5 +1,9 @@
 # CodexAwake
 
+<p align="center">
+  <img src="Resources/AppIcon.png" alt="CodexAwake logo" width="160">
+</p>
+
 CodexAwake is a native macOS menu bar utility and Codex cockpit. It launches its own local Codex App Server, provides a streamed chat UI for Codex, prevents **idle system sleep**, and offers an explicit opt-in **Closed-Lid** mode backed by a narrow privileged helper.
 
 It uses the official App Server protocol for managed-task state. For independent Codex Desktop tasks, it reads only local rollout identity plus `task_started` / `task_complete` lifecycle markers; prompt and response text is never decoded. The desktop bundle identifier remains the ON/OFF presence signal. CodexAwake owns at most one `PreventUserIdleSystemSleep` assertion. The display may still turn off. Closed-Lid is separate, defaults off, and changes the system sleep policy only while a short renewable lease is active.

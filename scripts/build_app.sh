@@ -24,6 +24,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/
 install -m 0755 "$BIN_DIR/CodexAwake" "$APP/Contents/MacOS/CodexAwake"
 install -m 0755 "$BIN_DIR/CodexAwakeClosedLidHelper" "$APP/Contents/Library/PrivilegedHelperTools/$HELPER_LABEL"
 install -m 0644 "$PROJECT_ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+install -m 0644 "$PROJECT_ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 install -m 0644 "$PROJECT_ROOT/Resources/$HELPER_LABEL.plist" "$APP/Contents/Resources/$HELPER_LABEL.plist"
 install -m 0755 "$PROJECT_ROOT/Resources/install-closed-lid-helper.sh" "$APP/Contents/Resources/install-closed-lid-helper.sh"
 install -m 0755 "$PROJECT_ROOT/Resources/uninstall-closed-lid-helper.sh" "$APP/Contents/Resources/uninstall-closed-lid-helper.sh"

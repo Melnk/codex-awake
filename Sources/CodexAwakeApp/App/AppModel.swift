@@ -521,7 +521,7 @@ final class AppModel: ObservableObject {
 
     private func updateDiagnostics() {
         var value = DiagnosticsSnapshot()
-        value.appVersion = "1.4.0 (6)"
+        value.appVersion = "1.4.1 (7)"
         value.architecture = Self.architecture
         value.codexPath = codexPath
         value.codexVersion = codexVersion
