@@ -13,6 +13,13 @@ enum InterfaceTheme: String, CaseIterable, Identifiable {
         }
     }
 
+    func title(in language: AppLanguage) -> String {
+        switch self {
+        case .light: language.text("Light", "Светлая")
+        case .dark: language.text("Dark", "Тёмная")
+        }
+    }
+
     var symbol: String {
         switch self {
         case .light: "sun.max.fill"

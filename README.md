@@ -36,9 +36,11 @@ You need:
    open dist/CodexAwake.app
    ```
 
-3. The dashboard opens automatically. If you close it, click the **bolt icon** in the macOS menu bar and select **Open Cockpit…**. CodexAwake intentionally has no Dock icon.
+3. The dashboard opens automatically. While CodexAwake is running, its icon stays in the Dock and macOS shows the normal running-app indicator below it. If you close the dashboard, click the Dock icon or the **bolt icon** in the macOS menu bar and select **Open Cockpit…**.
 
 4. Choose a project folder in **Chat with Codex**. The main protection switch is enabled by default and starts protecting the Mac when Codex is open or a tracked task is active.
+
+   Use the **EN / RU** switch in the top-right corner to change the application language. The choice is saved for the next launch.
 
 5. Optional: to keep the Mac running with the lid closed, enable **Closed-lid mode**, click **Enable closed-lid mode**, and approve the one-time administrator prompt. Close the lid only after the status says **Active — you can close the lid**.
 
@@ -79,9 +81,11 @@ If macOS blocks the first launch, right-click **CodexAwake.app**, choose **Open*
    open dist/CodexAwake.app
    ```
 
-3. Главное окно откроется автоматически. Если вы его закрыли, нажмите на **иконку молнии** в строке меню macOS и выберите **Open Cockpit…**. Иконки в Dock у CodexAwake специально нет.
+3. Главное окно откроется автоматически. Пока CodexAwake запущен, его иконка остаётся в Dock, а macOS показывает под ней стандартную точку работающего приложения. Если вы закрыли окно, нажмите на иконку в Dock или на **иконку молнии** в строке меню macOS и выберите **Open Cockpit…**.
 
 4. В блоке **Chat with Codex** выберите папку проекта. Основная защита включена по умолчанию и не даёт Mac уснуть, когда открыт Codex или выполняется отслеживаемая задача.
+
+   Переключатель **EN / RU** в правом верхнем углу меняет язык приложения. Выбранный язык сохраняется для следующих запусков.
 
 5. Необязательно: чтобы Mac продолжал работать с закрытой крышкой, включите **Closed-lid mode**, нажмите **Enable closed-lid mode** и один раз подтвердите запрос администратора. Закрывайте крышку только после появления статуса **Active — you can close the lid**.
 
@@ -104,6 +108,7 @@ open /Applications/CodexAwake.app
 Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a clean violet visual language with a saved **Light / Dark** appearance switch. It includes:
 
 - a clear **ON/OFF** protection card that explains what is currently keeping the Mac awake;
+- a saved **EN / RU** language switch for the cockpit, menu, dialogs, and diagnostics;
 - Codex Desktop presence, assertion, and combined active-session instruments;
 - privacy-safe IDs for active Codex Desktop and managed tasks;
 - a plain-language **Closed-lid mode** status, toggle, and one-time setup action;
@@ -181,7 +186,7 @@ CONFIGURATION=debug scripts/build_app.sh
 
 ## First launch
 
-CodexAwake has no Dock icon (`LSUIElement=true`). The cockpit opens automatically at launch; after closing it, reopen it from the bolt menu with **Open Cockpit…** or launch the `.app` again. On first launch the menu shows these facts:
+CodexAwake uses the normal macOS Dock lifecycle (`LSUIElement=false`), so the Dock shows its icon and running-app indicator while the process is active. The cockpit opens automatically at launch; after closing it, reopen it from the Dock icon, the bolt menu with **Open Cockpit…**, or launch the `.app` again. On first launch the menu shows these facts:
 
 1. cockpit tasks and sessions connected to its managed `--remote` endpoint are tracked individually;
 2. Codex Desktop process presence and top-level task lifecycle are detected, while chat contents remain private;
@@ -336,7 +341,7 @@ That script starts a temporary local server, performs `initialize`/`initialized`
 ```bash
 scripts/test.sh                 # unit + fake App Server integration suite
 scripts/build_app.sh            # release .app + ad-hoc signing
-scripts/verify.sh               # metadata, LSUIElement, signature, diff, secret-shaped files
+scripts/verify.sh               # metadata, Dock lifecycle, signature, diff, secret-shaped files
 scripts/real_app_server_test.sh # explicit, read-only real CLI handshake
 ```
 

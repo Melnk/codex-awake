@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var terminationPending = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.setActivationPolicy(.regular)
         model?.start()
     }
 
@@ -45,10 +46,12 @@ struct CodexAwakeApp: App {
             MenuContentView()
                 .environmentObject(model)
                 .preferredColorScheme(model.interfaceTheme.colorScheme)
+                .environment(\.locale, model.appLanguage.locale)
         } label: {
             CockpitLaunchingMenuBarLabel(
                 symbol: menuBarSymbol,
-                activeCount: model.activity.activeCount
+                activeCount: model.activity.activeCount,
+                language: model.appLanguage
             )
         }
         .menuBarExtraStyle(.menu)
@@ -57,6 +60,7 @@ struct CodexAwakeApp: App {
             CockpitView()
                 .environmentObject(model)
                 .preferredColorScheme(model.interfaceTheme.colorScheme)
+                .environment(\.locale, model.appLanguage.locale)
         }
         .defaultSize(width: 1080, height: 720)
         .windowStyle(.hiddenTitleBar)
@@ -66,6 +70,7 @@ struct CodexAwakeApp: App {
             DiagnosticsView()
                 .environmentObject(model)
                 .preferredColorScheme(model.interfaceTheme.colorScheme)
+                .environment(\.locale, model.appLanguage.locale)
         }
         .defaultSize(width: 620, height: 520)
         .windowResizability(.contentMinSize)
@@ -85,10 +90,14 @@ private struct CockpitLaunchingMenuBarLabel: View {
 
     let symbol: String
     let activeCount: Int
+    let language: AppLanguage
 
     var body: some View {
         Image(systemName: symbol)
-            .accessibilityLabel("CodexAwake, \(activeCount) active managed Codex threads")
+            .accessibilityLabel(language.text(
+                "CodexAwake, \(activeCount) active managed Codex threads",
+                "CodexAwake, активных управляемых потоков Codex: \(activeCount)"
+            ))
             .task {
                 guard !didRequestInitialWindow else { return }
                 didRequestInitialWindow = true

@@ -59,13 +59,13 @@ struct CockpitView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("CodexAwake")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
-                Text("Keep your Codex work running")
+                Text(t("Keep your Codex work running", "Работа Codex без перехода в сон"))
                     .font(.system(size: 11))
                     .foregroundStyle(CockpitPalette.muted)
             }
 
             StatusPill(
-                text: model.appServerState == .running ? "CODEX READY" : "CONNECTING",
+                text: model.appServerState == .running ? t("CODEX READY", "CODEX ГОТОВ") : t("CONNECTING", "ПОДКЛЮЧЕНИЕ"),
                 color: serverAccent
             )
             .padding(.leading, 8)
@@ -73,13 +73,18 @@ struct CockpitView: View {
             Spacer()
 
             Label(
-                "\(model.totalActiveSessionCount) active",
+                t("\(model.totalActiveSessionCount) active", "Активных: \(model.totalActiveSessionCount)"),
                 systemImage: model.totalActiveSessionCount > 0 ? "waveform.path.ecg" : "waveform"
             )
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(CockpitPalette.muted)
 
-            ThemeSwitcher(selection: Binding(
+            LanguageSwitcher(selection: Binding(
+                get: { model.appLanguage },
+                set: { model.setAppLanguage($0) }
+            ))
+
+            ThemeSwitcher(language: model.appLanguage, selection: Binding(
                 get: { model.interfaceTheme },
                 set: { model.setInterfaceTheme($0) }
             ))
@@ -101,13 +106,13 @@ struct CockpitView: View {
 
                 HStack(spacing: 10) {
                     InstrumentCard(
-                        label: "CODEX APP",
-                        value: model.codexDesktopRunning ? "ON" : "OFF",
+                        label: t("CODEX APP", "ПРИЛОЖЕНИЕ CODEX"),
+                        value: model.codexDesktopRunning ? t("ON", "ВКЛ") : t("OFF", "ВЫКЛ"),
                         icon: "macwindow",
                         accent: model.codexDesktopRunning ? CockpitPalette.ice : CockpitPalette.muted
                     )
                     InstrumentCard(
-                        label: "ACTIVE SESSIONS",
+                        label: t("ACTIVE SESSIONS", "АКТИВНЫЕ СЕССИИ"),
                         value: "\(model.totalActiveSessionCount)",
                         icon: "waveform.path.ecg",
                         accent: model.totalActiveSessionCount > 0 ? CockpitPalette.ice : CockpitPalette.muted
@@ -121,9 +126,9 @@ struct CockpitView: View {
                         .foregroundStyle(CockpitPalette.ice)
                         .frame(width: 22)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("While Codex is open")
+                        Text(t("While Codex is open", "Пока Codex открыт"))
                             .font(.system(size: 11, weight: .semibold))
-                        Text("Keep this Mac awake even between tasks")
+                        Text(t("Keep this Mac awake even between tasks", "Не давать Mac уснуть между задачами"))
                             .font(.system(size: 9))
                             .foregroundStyle(CockpitPalette.muted)
                     }
@@ -143,9 +148,9 @@ struct CockpitView: View {
                 closedLidControl
 
                 HStack(spacing: 10) {
-                    Button("Diagnostics") { openWindow(id: "diagnostics") }
+                    Button(t("Diagnostics", "Диагностика")) { openWindow(id: "diagnostics") }
                         .buttonStyle(CockpitSecondaryButtonStyle())
-                    Button("Restart") { model.restartServer() }
+                    Button(t("Restart", "Перезапустить")) { model.restartServer() }
                         .buttonStyle(CockpitSecondaryButtonStyle())
                         .disabled(model.appServerState == .starting || model.appServerState == .stopping)
                 }
@@ -172,7 +177,7 @@ struct CockpitView: View {
 
             VStack(alignment: .leading, spacing: 13) {
                 HStack {
-                    Label("Sleep protection", systemImage: "sparkles")
+                    Label(t("Sleep protection", "Защита от сна"), systemImage: "sparkles")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.88))
                     Spacer()
@@ -186,7 +191,7 @@ struct CockpitView: View {
                     .tint(.white.opacity(0.88))
                 }
 
-                Text(model.autoKeepAwake ? "Your Mac stays awake" : "Protection is paused")
+                Text(model.autoKeepAwake ? t("Your Mac stays awake", "Ваш Mac не уснёт") : t("Protection is paused", "Защита приостановлена"))
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
@@ -200,7 +205,7 @@ struct CockpitView: View {
                     Circle()
                         .fill(.white)
                         .frame(width: 7, height: 7)
-                    Text(model.autoKeepAwake ? "ON" : "OFF")
+                    Text(model.autoKeepAwake ? t("ON", "ВКЛ") : t("OFF", "ВЫКЛ"))
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .tracking(1.4)
                 }
@@ -220,7 +225,7 @@ struct CockpitView: View {
     private var activeTasks: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("ACTIVE SESSIONS")
+                Text(t("ACTIVE SESSIONS", "АКТИВНЫЕ СЕССИИ"))
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .tracking(1.4)
                     .foregroundStyle(CockpitPalette.muted)
@@ -232,7 +237,7 @@ struct CockpitView: View {
             }
 
             if model.totalActiveSessionCount == 0 {
-                Label("No active Codex sessions", systemImage: "checkmark.circle")
+                Label(t("No active Codex sessions", "Нет активных сессий Codex"), systemImage: "checkmark.circle")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(CockpitPalette.muted)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -244,7 +249,7 @@ struct CockpitView: View {
                     LazyVStack(spacing: 7) {
                         ForEach(model.codexDesktopActiveSessionIDs.sorted(), id: \.self) { id in
                             ActiveSessionRow(
-                                title: "Codex Desktop task",
+                                title: t("Codex Desktop task", "Задача Codex Desktop"),
                                 id: abbreviated(id),
                                 icon: "macwindow",
                                 accent: CockpitPalette.ice
@@ -252,7 +257,9 @@ struct CockpitView: View {
                         }
                         ForEach(model.activity.activeThreadIds.sorted(), id: \.self) { id in
                             ActiveSessionRow(
-                                title: id == model.chatThreadID ? "Cockpit task" : "Managed Codex task",
+                                title: id == model.chatThreadID
+                                    ? t("Cockpit task", "Задача из приложения")
+                                    : t("Managed Codex task", "Управляемая задача Codex"),
                                 id: abbreviated(id),
                                 icon: "waveform",
                                 accent: CockpitPalette.ice
@@ -270,7 +277,7 @@ struct CockpitView: View {
             Image(systemName: model.codexDesktopRunning ? "dot.radiowaves.left.and.right" : "power")
                 .foregroundStyle(model.codexDesktopRunning ? CockpitPalette.ice : CockpitPalette.silver)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Codex app")
+                Text(t("Codex app", "Приложение Codex"))
                     .font(.system(size: 9, weight: .semibold, design: .rounded))
                     .textCase(.uppercase)
                     .tracking(0.9)
@@ -291,7 +298,7 @@ struct CockpitView: View {
                 Image(systemName: model.closedLidProtection.leaseActive ? "lock.open.display" : "lock.display")
                     .foregroundStyle(closedLidAccent)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Closed-lid mode")
+                    Text(t("Closed-lid mode", "Режим закрытой крышки"))
                         .font(.system(size: 9, weight: .semibold, design: .rounded))
                         .textCase(.uppercase)
                         .tracking(0.9)
@@ -310,12 +317,15 @@ struct CockpitView: View {
             }
 
             if !model.closedLidProtection.helperInstalled || !model.closedLidProtection.helperReachable {
-                Button("Enable closed-lid mode") { model.installClosedLidHelper() }
+                Button(t("Enable closed-lid mode", "Включить работу с закрытой крышкой")) { model.installClosedLidHelper() }
                     .buttonStyle(CockpitSecondaryButtonStyle())
                     .font(.system(size: 10, weight: .semibold))
             }
 
-            Text(model.closedLidActionMessage ?? "Requires administrator approval once. Restores normal sleep when its lease expires.")
+            Text(model.closedLidActionMessage ?? t(
+                "Requires administrator approval once. Restores normal sleep when its lease expires.",
+                "Требует однократного подтверждения администратора. После окончания аренды обычный сон восстановится."
+            ))
                 .font(.system(size: 9))
                 .foregroundStyle(model.closedLidProtection.lastError == nil ? CockpitPalette.muted : CockpitPalette.amber)
                 .fixedSize(horizontal: false, vertical: true)
@@ -339,11 +349,11 @@ struct CockpitView: View {
         HStack(spacing: 13) {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
-                    Text("Chat with Codex")
+                    Text(t("Chat with Codex", "Чат с Codex"))
                         .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    StatusPill(text: model.appServerState == .running ? "READY" : "OFFLINE", color: serverAccent)
+                    StatusPill(text: model.appServerState == .running ? t("READY", "ГОТОВ") : t("OFFLINE", "НЕ В СЕТИ"), color: serverAccent)
                 }
-                Text("Your local Codex session — no separate API key")
+                Text(t("Your local Codex session — no separate API key", "Локальная сессия Codex — отдельный API-ключ не нужен"))
                     .font(.caption)
                     .foregroundStyle(CockpitPalette.muted)
             }
@@ -355,7 +365,7 @@ struct CockpitView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "folder")
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("PROJECT")
+                        Text(t("PROJECT", "ПРОЕКТ"))
                             .font(.system(size: 8, weight: .semibold))
                             .tracking(1)
                         Text(workspaceName)
@@ -365,13 +375,13 @@ struct CockpitView: View {
                 }
             }
             .buttonStyle(CockpitSecondaryButtonStyle())
-            .help(model.workspacePath ?? "Choose a project folder")
+            .help(model.workspacePath ?? t("Choose a project folder", "Выберите папку проекта"))
 
             Button {
                 model.newChat()
                 promptFocused = true
             } label: {
-                Label("New task", systemImage: "plus")
+                Label(t("New task", "Новая задача"), systemImage: "plus")
             }
             .buttonStyle(CockpitSecondaryButtonStyle())
         }
@@ -387,13 +397,13 @@ struct CockpitView: View {
                         emptyChat
                     } else {
                         ForEach(model.chatMessages) { message in
-                            ChatMessageRow(message: message)
+                            ChatMessageRow(message: message, language: model.appLanguage)
                                 .id(message.id)
                         }
                     }
 
                     if model.chatIsSending, !model.chatMessages.contains(where: { $0.isStreaming }) {
-                        ThinkingIndicator()
+                        ThinkingIndicator(language: model.appLanguage)
                             .id("thinking")
                     }
                 }
@@ -428,7 +438,7 @@ struct CockpitView: View {
                     .font(.system(size: 38, weight: .ultraLight))
                     .foregroundStyle(CockpitPalette.silver)
             }
-            Text(model.workspacePath == nil ? "Choose a project" : "What would you like to build?")
+            Text(model.workspacePath == nil ? t("Choose a project", "Выберите проект") : t("What would you like to build?", "Что вы хотите сделать?"))
                 .font(.system(size: 20, weight: .semibold, design: .rounded))
             Text(emptyChatDescription)
                 .font(.system(size: 12))
@@ -436,7 +446,7 @@ struct CockpitView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 430)
             if model.workspacePath == nil {
-                Button("Choose Project…") { model.chooseWorkspace() }
+                Button(t("Choose Project…", "Выбрать проект…")) { model.chooseWorkspace() }
                     .buttonStyle(CockpitPrimaryButtonStyle())
             }
         }
@@ -449,7 +459,7 @@ struct CockpitView: View {
             HStack(alignment: .bottom, spacing: 12) {
                 ZStack(alignment: .topLeading) {
                     if prompt.isEmpty {
-                        Text("Ask Codex to inspect, explain, build, or fix…")
+                        Text(t("Ask Codex to inspect, explain, build, or fix…", "Попросите Codex проверить, объяснить, собрать или исправить…"))
                             .font(.system(size: 13))
                             .foregroundStyle(CockpitPalette.muted.opacity(0.86))
                             .padding(.horizontal, 13)
@@ -481,7 +491,7 @@ struct CockpitView: View {
                     }
                     .buttonStyle(CockpitDangerButtonStyle())
                     .disabled(model.chatTurnID == nil)
-                    .help("Stop current task")
+                    .help(t("Stop current task", "Остановить текущую задачу"))
                 } else {
                     Button {
                         submitPrompt()
@@ -492,7 +502,7 @@ struct CockpitView: View {
                     }
                     .buttonStyle(CockpitPrimaryButtonStyle())
                     .disabled(!canAttemptSend)
-                    .help(model.chatUnavailableReason ?? "Send to Codex")
+                    .help(model.chatUnavailableReason ?? t("Send to Codex", "Отправить в Codex"))
                 }
             }
 
@@ -514,34 +524,39 @@ struct CockpitView: View {
     }
 
     private var composerStatusText: String {
-        model.chatUnavailableReason ?? "Enter to send · Shift+Enter for a new line"
+        model.chatUnavailableReason ?? t("Enter to send · Shift+Enter for a new line", "Enter — отправить · Shift+Enter — новая строка")
     }
 
     private var codexDesktopPresenceDescription: String {
         if model.codexDesktopRunning {
             if !model.codexDesktopActiveSessionIDs.isEmpty {
                 let count = model.codexDesktopActiveSessionIDs.count
-                return "\(count) active \(count == 1 ? "session" : "sessions") detected. Your prompts and answers stay private."
+                return t(
+                    "\(count) active \(count == 1 ? "session" : "sessions") detected. Your prompts and answers stay private.",
+                    "Обнаружено активных сессий: \(count). Ваши запросы и ответы остаются приватными."
+                )
             }
             return model.keepAwakeForCodexDesktop
-                ? "Codex is open. This Mac stays awake between tasks."
-                : "Codex is open. Only active tasks prevent sleep."
+                ? t("Codex is open. This Mac stays awake between tasks.", "Codex открыт. Mac не уснёт даже между задачами.")
+                : t("Codex is open. Only active tasks prevent sleep.", "Codex открыт. Сон блокируют только активные задачи.")
         }
-        return "Codex is closed. Open it to enable app-based protection."
+        return t("Codex is closed. Open it to enable app-based protection.", "Codex закрыт. Откройте его для защиты от сна.")
     }
 
     private var powerSubtitle: String {
-        guard model.autoKeepAwake else { return "Turn it on to protect active Codex work from sleep." }
+        guard model.autoKeepAwake else { return t("Turn it on to protect active Codex work from sleep.", "Включите защиту, чтобы активная работа Codex не прерывалась сном.") }
         if model.closedLidProtection.leaseActive {
-            return "Closed-lid mode is active. You can close your MacBook."
+            return t("Closed-lid mode is active. You can close your MacBook.", "Режим закрытой крышки активен. MacBook можно закрыть.")
         }
         if model.assertionHeld, !model.codexDesktopActiveSessionIDs.isEmpty {
-            return "An active Codex session is protected from sleep."
+            return t("An active Codex session is protected from sleep.", "Активная сессия Codex защищена от сна.")
         }
         if model.assertionHeld, model.codexDesktopRunning, model.keepAwakeForCodexDesktop {
-            return "Codex is open, so sleep protection is active."
+            return t("Codex is open, so sleep protection is active.", "Codex открыт, поэтому защита от сна активна.")
         }
-        return model.assertionHeld ? "Sleep protection is active." : "Ready — protection starts with your next Codex task."
+        return model.assertionHeld
+            ? t("Sleep protection is active.", "Защита от сна активна.")
+            : t("Ready — protection starts with your next Codex task.", "Готово — защита включится со следующей задачей Codex.")
     }
 
     private var closedLidAccent: Color {
@@ -551,11 +566,11 @@ struct CockpitView: View {
     }
 
     private var closedLidStatusText: String {
-        if model.closedLidProtection.leaseActive { return "Active — you can close the lid" }
-        if !model.closedLidProtection.helperInstalled { return "One-time setup required" }
-        if !model.closedLidProtection.helperReachable { return "A quick update is required" }
-        if model.closedLidProtectionEnabled { return "Ready — starts with protected work" }
-        return "Off — closing the lid sleeps normally"
+        if model.closedLidProtection.leaseActive { return t("Active — you can close the lid", "Активен — крышку можно закрыть") }
+        if !model.closedLidProtection.helperInstalled { return t("One-time setup required", "Нужна однократная настройка") }
+        if !model.closedLidProtection.helperReachable { return t("A quick update is required", "Требуется быстрое обновление") }
+        if model.closedLidProtectionEnabled { return t("Ready — starts with protected work", "Готов — включится при защищённой работе") }
+        return t("Off — closing the lid sleeps normally", "Выключен — при закрытии крышки Mac уснёт")
     }
 
     private var serverAccent: Color {
@@ -568,18 +583,18 @@ struct CockpitView: View {
     }
 
     private var workspaceName: String {
-        guard let workspacePath = model.workspacePath else { return "Choose folder" }
+        guard let workspacePath = model.workspacePath else { return t("Choose folder", "Выбрать папку") }
         return URL(fileURLWithPath: workspacePath).lastPathComponent
     }
 
     private var emptyChatDescription: String {
         if model.workspacePath == nil {
-            return "Choose the folder Codex should work in. It will ask before sensitive actions."
+            return t("Choose the folder Codex should work in. It will ask before sensitive actions.", "Выберите папку для работы Codex. Перед важными действиями он спросит разрешение.")
         }
         if model.appServerState != .running {
-            return "Codex is connecting. This usually takes only a moment."
+            return t("Codex is connecting. This usually takes only a moment.", "Codex подключается. Обычно это занимает несколько секунд.")
         }
-        return "Use your existing Codex sign-in right here. CodexAwake never stores an API key."
+        return t("Use your existing Codex sign-in right here. CodexAwake never stores an API key.", "Используйте текущий вход в Codex. CodexAwake не хранит API-ключ.")
     }
 
     private func submitPrompt() {
@@ -591,6 +606,10 @@ struct CockpitView: View {
     private func abbreviated(_ value: String) -> String {
         guard value.count > 14 else { return value }
         return "\(value.prefix(8))…\(value.suffix(4))"
+    }
+
+    private func t(_ english: String, _ russian: String) -> String {
+        model.appLanguage.text(english, russian)
     }
 }
 
@@ -620,6 +639,7 @@ private struct ActiveSessionRow: View {
 
 private struct ChatMessageRow: View {
     let message: CodexChatMessage
+    let language: AppLanguage
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -664,9 +684,9 @@ private struct ChatMessageRow: View {
 
     private var roleLabel: String {
         switch message.role {
-        case .user: "YOU"
-        case .assistant: message.phase == "commentary" ? "CODEX · PROGRESS" : "CODEX"
-        case .system: "SYSTEM"
+        case .user: language.text("YOU", "ВЫ")
+        case .assistant: message.phase == "commentary" ? language.text("CODEX · PROGRESS", "CODEX · ХОД РАБОТЫ") : "CODEX"
+        case .system: language.text("SYSTEM", "СИСТЕМА")
         }
     }
 
@@ -725,7 +745,7 @@ private struct ApprovalOverlay: View {
                     .frame(width: 48, height: 48)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("CODEX APPROVAL")
+                        Text(t("CODEX APPROVAL", "ПОДТВЕРЖДЕНИЕ CODEX"))
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
                             .tracking(1.6)
                             .foregroundStyle(CockpitPalette.amber)
@@ -742,17 +762,20 @@ private struct ApprovalOverlay: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(CockpitPalette.canvas.opacity(0.76), in: RoundedRectangle(cornerRadius: 11))
 
-                Text("Review the request before allowing it. “For session” applies the same decision to later matching requests in this Codex session.")
+                Text(t(
+                    "Review the request before allowing it. “For session” applies the same decision to later matching requests in this Codex session.",
+                    "Проверьте запрос перед подтверждением. «Для сессии» применит это решение к следующим похожим запросам в текущей сессии Codex."
+                ))
                     .font(.caption)
                     .foregroundStyle(CockpitPalette.muted)
 
                 HStack(spacing: 10) {
-                    Button("Decline") { model.resolveApproval(request, decision: .decline) }
+                    Button(t("Decline", "Отклонить")) { model.resolveApproval(request, decision: .decline) }
                         .buttonStyle(CockpitSecondaryButtonStyle())
                     Spacer()
-                    Button("Allow for Session") { model.resolveApproval(request, decision: .acceptForSession) }
+                    Button(t("Allow for Session", "Разрешить для сессии")) { model.resolveApproval(request, decision: .acceptForSession) }
                         .buttonStyle(CockpitSecondaryButtonStyle())
-                    Button("Allow Once") { model.resolveApproval(request, decision: .accept) }
+                    Button(t("Allow Once", "Разрешить один раз")) { model.resolveApproval(request, decision: .accept) }
                         .buttonStyle(CockpitPrimaryButtonStyle())
                 }
             }
@@ -761,6 +784,10 @@ private struct ApprovalOverlay: View {
             .background(CockpitPanel(cornerRadius: 22))
             .shadow(color: .black.opacity(0.28), radius: 38, y: 18)
         }
+    }
+
+    private func t(_ english: String, _ russian: String) -> String {
+        model.appLanguage.text(english, russian)
     }
 }
 
@@ -817,10 +844,12 @@ private struct StatusPill: View {
 }
 
 private struct ThinkingIndicator: View {
+    let language: AppLanguage
+
     var body: some View {
         HStack(spacing: 10) {
             ProgressView().controlSize(.small).tint(CockpitPalette.ice)
-            Text("Codex is working…")
+            Text(language.text("Codex is working…", "Codex работает…"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(CockpitPalette.muted)
             Spacer()
@@ -830,6 +859,7 @@ private struct ThinkingIndicator: View {
 }
 
 private struct ThemeSwitcher: View {
+    let language: AppLanguage
     @Binding var selection: InterfaceTheme
 
     var body: some View {
@@ -850,9 +880,41 @@ private struct ThemeSwitcher: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help("\(theme.title) appearance")
-                .accessibilityLabel("Use \(theme.title.lowercased()) appearance")
-                .accessibilityValue(selection == theme ? "Selected" : "Not selected")
+                .help(language.text("\(theme.title) appearance", "Тема: \(theme.title(in: language))"))
+                .accessibilityLabel(language.text("Use \(theme.title.lowercased()) appearance", "Использовать тему «\(theme.title(in: language))»"))
+                .accessibilityValue(selection == theme ? language.text("Selected", "Выбрано") : language.text("Not selected", "Не выбрано"))
+            }
+        }
+        .padding(4)
+        .background(CockpitPalette.canvas.opacity(0.72), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(CockpitPalette.separator.opacity(0.62)))
+    }
+}
+
+private struct LanguageSwitcher: View {
+    @Binding var selection: AppLanguage
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(AppLanguage.allCases) { language in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selection = language
+                    }
+                } label: {
+                    Text(language.code)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .frame(width: 32, height: 28)
+                        .foregroundStyle(selection == language ? Color.white : CockpitPalette.muted)
+                        .background(
+                            selection == language ? CockpitPalette.ice : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help(language.title)
+                .accessibilityLabel("\(language.title) / \(language.code)")
+                .accessibilityValue(selection == language ? selection.text("Selected", "Выбрано") : selection.text("Not selected", "Не выбрано"))
             }
         }
         .padding(4)

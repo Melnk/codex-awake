@@ -30,6 +30,7 @@ final class AppModel: ObservableObject {
     @Published var chatIsSending = false
     @Published var approvalRequests: [CodexApprovalRequest] = []
     @Published var interfaceTheme: InterfaceTheme
+    @Published var appLanguage: AppLanguage
 
     let diagnostics = DiagnosticsStore()
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "App")
@@ -64,6 +65,9 @@ final class AppModel: ObservableObject {
         interfaceTheme = InterfaceTheme(
             rawValue: defaults.string(forKey: "InterfaceTheme") ?? ""
         ) ?? .light
+        appLanguage = AppLanguage(
+            rawValue: defaults.string(forKey: "AppLanguage") ?? ""
+        ) ?? .systemDefault
         autoKeepAwake = auto
         keepAwakeForCodexDesktop = keepForDesktop
         closedLidProtectionEnabled = closedLid
@@ -115,7 +119,7 @@ final class AppModel: ObservableObject {
     func stopServer() {
         Task {
             cancelPendingApprovals()
-            markChatDisconnected("The managed Codex server was stopped.")
+            markChatDisconnected(t("The managed Codex server was stopped.", "Управляемый сервер Codex остановлен."))
             connectionLoopTask?.cancel()
             connectionLoopTask = nil
             await client?.disconnect()
@@ -127,7 +131,7 @@ final class AppModel: ObservableObject {
     func restartServer() {
         Task {
             cancelPendingApprovals()
-            markChatDisconnected("The managed Codex server is restarting.")
+            markChatDisconnected(t("The managed Codex server is restarting.", "Управляемый сервер Codex перезапускается."))
             await client?.disconnect()
             client = nil
             do {
@@ -151,6 +155,18 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.set(theme.rawValue, forKey: "InterfaceTheme")
     }
 
+    func setAppLanguage(_ language: AppLanguage) {
+        appLanguage = language
+        UserDefaults.standard.set(language.rawValue, forKey: "AppLanguage")
+        if closedLidProtection.leaseActive {
+            closedLidActionMessage = t("Closed-Lid lease active. The display may be closed.", "Аренда Closed-Lid активна. Крышку можно закрыть.")
+        } else if closedLidProtectionEnabled {
+            closedLidActionMessage = t("Closed-Lid armed; the lease starts with sleep protection.", "Closed-Lid готов; аренда начнётся вместе с защитой от сна.")
+        } else {
+            closedLidActionMessage = nil
+        }
+    }
+
     func setKeepAwakeForCodexDesktop(_ enabled: Bool) {
         keepAwakeForCodexDesktop = enabled
         UserDefaults.standard.set(enabled, forKey: "KeepAwakeForCodexDesktop")
@@ -164,8 +180,8 @@ final class AppModel: ObservableObject {
         closedLidProtectionEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: "ClosedLidProtectionEnabled")
         closedLidActionMessage = enabled
-            ? "Closed-Lid requested. Install the helper if it is not ready."
-            : "Closed-Lid disabled; normal lid sleep is restored."
+            ? t("Closed-Lid requested. Install the helper if it is not ready.", "Режим закрытой крышки запрошен. Если helper не готов, установите его.")
+            : t("Closed-Lid disabled; normal lid sleep is restored.", "Режим закрытой крышки выключен; обычный сон восстановлен.")
         Task {
             do {
                 try await power.setClosedLidRequested(enabled)
@@ -181,9 +197,9 @@ final class AppModel: ObservableObject {
         if !closedLidProtectionEnabled { setClosedLidProtectionEnabled(true) }
         openClosedLidHelperCommand(
             resource: "install-closed-lid-helper",
-            title: "Installing CodexAwake Closed-Lid helper"
+            title: t("Installing CodexAwake Closed-Lid helper", "Установка Closed-Lid helper CodexAwake")
         )
-        closedLidActionMessage = "Complete the administrator prompt in Terminal, then return here."
+        closedLidActionMessage = t("Complete the administrator prompt in Terminal, then return here.", "Подтвердите запрос администратора в Терминале, затем вернитесь сюда.")
     }
 
     func removeClosedLidHelper() {
@@ -194,9 +210,9 @@ final class AppModel: ObservableObject {
             closedLidProtection = await power.refreshClosedLidStatus()
             openClosedLidHelperCommand(
                 resource: "uninstall-closed-lid-helper",
-                title: "Removing CodexAwake Closed-Lid helper"
+                title: t("Removing CodexAwake Closed-Lid helper", "Удаление Closed-Lid helper CodexAwake")
             )
-            closedLidActionMessage = "Complete the administrator prompt in Terminal."
+            closedLidActionMessage = t("Complete the administrator prompt in Terminal.", "Подтвердите запрос администратора в Терминале.")
             updateDiagnostics()
         }
     }
@@ -257,7 +273,7 @@ final class AppModel: ObservableObject {
 
     func chooseCodexBinary() {
         let panel = NSOpenPanel()
-        panel.title = "Choose the Codex CLI executable"
+        panel.title = t("Choose the Codex CLI executable", "Выберите исполняемый файл Codex CLI")
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = false
@@ -278,8 +294,8 @@ final class AppModel: ObservableObject {
 
     func chooseWorkspace() {
         let panel = NSOpenPanel()
-        panel.title = "Choose a project for Codex"
-        panel.prompt = "Use Project"
+        panel.title = t("Choose a project for Codex", "Выберите проект для Codex")
+        panel.prompt = t("Use Project", "Использовать проект")
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
@@ -299,7 +315,7 @@ final class AppModel: ObservableObject {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !chatIsSending else { return false }
         guard let workspacePath, appServerState == .running, let client else {
-            appendSystemMessage(chatUnavailableReason ?? "Codex is not ready yet.")
+            appendSystemMessage(chatUnavailableReason ?? t("Codex is not ready yet.", "Codex пока не готов."))
             return false
         }
 
@@ -387,16 +403,16 @@ final class AppModel: ObservableObject {
 
     var chatUnavailableReason: String? {
         if workspacePath == nil {
-            return "Choose a project folder before sending a message."
+            return t("Choose a project folder before sending a message.", "Перед отправкой сообщения выберите папку проекта.")
         }
         if appServerState != .running {
             if codexPath == nil {
-                return "Codex runtime is not ready. Restart the server or choose a Codex binary in Diagnostics."
+                return t("Codex runtime is not ready. Restart the server or choose a Codex binary in Diagnostics.", "Среда Codex не готова. Перезапустите сервер или выберите исполняемый файл Codex в Диагностике.")
             }
-            return "Codex App Server is \(appServerState.rawValue). Wait for READY or press Restart."
+            return t("Codex App Server is \(appServerState.rawValue). Wait for READY or press Restart.", "Сервер приложения Codex: \(appServerState.rawValue). Дождитесь статуса «ГОТОВ» или нажмите «Перезапустить».")
         }
         if client == nil {
-            return "Codex is connecting. Try again in a moment."
+            return t("Codex is connecting. Try again in a moment.", "Codex подключается. Повторите через несколько секунд.")
         }
         return nil
     }
@@ -473,7 +489,7 @@ final class AppModel: ObservableObject {
         guard !isShuttingDown else { return }
         lastSafeError = String(reason.prefix(300))
         cancelPendingApprovals()
-        markChatDisconnected("Connection to the managed Codex server was lost.")
+        markChatDisconnected(t("Connection to the managed Codex server was lost.", "Соединение с управляемым сервером Codex потеряно."))
         let unknown = await tracker.markConnectionUnknown()
         await coordinator.update(unknown)
         activity = unknown
@@ -521,7 +537,7 @@ final class AppModel: ObservableObject {
 
     private func updateDiagnostics() {
         var value = DiagnosticsSnapshot()
-        value.appVersion = "1.4.1 (7)"
+        value.appVersion = "1.5.0 (9)"
         value.architecture = Self.architecture
         value.codexPath = codexPath
         value.codexVersion = codexVersion
@@ -581,9 +597,9 @@ final class AppModel: ObservableObject {
                 if value != closedLidProtection {
                     closedLidProtection = value
                     if value.leaseActive {
-                        closedLidActionMessage = "Closed-Lid lease active. The display may be closed."
+                        closedLidActionMessage = t("Closed-Lid lease active. The display may be closed.", "Аренда Closed-Lid активна. Крышку можно закрыть.")
                     } else if value.requested, value.helperInstalled, value.helperReachable {
-                        closedLidActionMessage = "Closed-Lid armed; the lease starts with sleep protection."
+                        closedLidActionMessage = t("Closed-Lid armed; the lease starts with sleep protection.", "Closed-Lid готов; аренда начнётся вместе с защитой от сна.")
                     }
                     updateDiagnostics()
                 }
@@ -616,6 +632,10 @@ final class AppModel: ObservableObject {
         } catch {
             record(error)
         }
+    }
+
+    private func t(_ english: String, _ russian: String) -> String {
+        appLanguage.text(english, russian)
     }
 
     private func stopCodexDesktopMonitoring() {
@@ -710,7 +730,7 @@ final class AppModel: ObservableObject {
                 chatMessages[index].isStreaming = false
             }
             if let status, status != "completed", status != "interrupted" {
-                appendSystemMessage("Codex turn ended with status: \(status).")
+                appendSystemMessage(t("Codex turn ended with status: \(status).", "Ход Codex завершён со статусом: \(status)."))
             }
 
         case .runtimeError(let threadID, let message):
@@ -746,9 +766,11 @@ final class AppModel: ObservableObject {
 
     private func approvalTitle(kind: CodexApprovalKind, params: JSONValue?) -> String {
         if let host = params?["networkApprovalContext"]?["host"]?.stringValue {
-            return "Allow network access to \(host)?"
+            return t("Allow network access to \(host)?", "Разрешить сетевой доступ к \(host)?")
         }
-        return kind == .command ? "Allow this command?" : "Allow these file changes?"
+        return kind == .command
+            ? t("Allow this command?", "Разрешить эту команду?")
+            : t("Allow these file changes?", "Разрешить эти изменения файлов?")
     }
 
     private func approvalDetail(kind: CodexApprovalKind, params: JSONValue?) -> String {
@@ -762,12 +784,12 @@ final class AppModel: ObservableObject {
             if let command = params?["command"]?.arrayValue?.compactMap(\.stringValue), !command.isEmpty {
                 return String(command.joined(separator: " ").prefix(600))
             }
-            return "Codex wants to run a command in the selected workspace."
+            return t("Codex wants to run a command in the selected workspace.", "Codex хочет выполнить команду в выбранном проекте.")
         }
         if let root = params?["grantRoot"]?.stringValue {
-            return "Codex wants to write inside \(root)."
+            return t("Codex wants to write inside \(root).", "Codex хочет записать данные в \(root).")
         }
-        return "Codex wants to apply file changes in the selected workspace."
+        return t("Codex wants to apply file changes in the selected workspace.", "Codex хочет изменить файлы в выбранном проекте.")
     }
 
     private func cancelPendingApprovals() {

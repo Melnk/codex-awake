@@ -10,7 +10,7 @@ HELPER_LABEL="com.melnikoleg.CodexAwake.ClosedLidHelper"
 
 plutil -lint "$APP/Contents/Info.plist"
 [[ "$(plutil -extract CFBundleIdentifier raw "$APP/Contents/Info.plist")" == "com.melnikoleg.CodexAwake" ]]
-[[ "$(plutil -extract LSUIElement raw "$APP/Contents/Info.plist")" == "true" ]]
+[[ "$(plutil -extract LSUIElement raw "$APP/Contents/Info.plist")" == "false" ]]
 [[ -x "$APP/Contents/MacOS/CodexAwake" ]]
 codesign --verify --deep --strict "$APP"
 codesign --verify --strict "$APP/Contents/Library/PrivilegedHelperTools/$HELPER_LABEL"

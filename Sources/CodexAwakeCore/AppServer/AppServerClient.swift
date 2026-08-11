@@ -60,7 +60,7 @@ public actor AppServerClient {
                     "clientInfo": .object([
                         "name": .string("codex_awake"),
                         "title": .string("CodexAwake"),
-                        "version": .string("1.4.1")
+                        "version": .string("1.5.0")
                     ])
                 ])
             )
