@@ -76,6 +76,10 @@ final class ScriptedTransport: LocalWebSocketTransport, @unchecked Sendable {
         switch method {
         case "initialize":
             response = "{\"id\":\(id),\"result\":{}}"
+        case "thread/start":
+            response = "{\"id\":\(id),\"result\":{\"thread\":{\"id\":\"cockpit-thread\"}}}"
+        case "turn/start":
+            response = "{\"id\":\(id),\"result\":{\"turn\":{\"id\":\"cockpit-turn\",\"status\":\"inProgress\"}}}"
         case "thread/loaded/list":
             response = "{\"id\":\(id),\"result\":{\"data\":[\"thread-1\"]}}"
         case "thread/read":

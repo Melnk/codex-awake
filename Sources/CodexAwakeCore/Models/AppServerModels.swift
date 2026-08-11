@@ -73,11 +73,28 @@ public struct ActivitySnapshot: Equatable, Sendable {
 }
 
 public enum AppServerEvent: Equatable, Sendable {
+    case threadStarted(threadId: String)
     case turnStarted(TurnKey)
     case turnCompleted(TurnKey, status: String?)
     case threadStatusChanged(threadId: String, status: ThreadRuntimeStatus)
     case threadClosed(threadId: String)
+    case agentMessageDelta(threadId: String, turnId: String, itemId: String, delta: String)
+    case agentMessageCompleted(threadId: String, turnId: String, itemId: String, text: String, phase: String?)
+    case runtimeError(threadId: String?, message: String)
+    case ignored(method: String)
     case unknown(method: String)
+}
+
+public struct AppServerServerRequest: Equatable, Sendable {
+    public let id: Int
+    public let method: String
+    public let params: JSONValue?
+
+    public init(id: Int, method: String, params: JSONValue?) {
+        self.id = id
+        self.method = method
+        self.params = params
+    }
 }
 
 public enum CodexAwakeError: LocalizedError, Equatable, Sendable {

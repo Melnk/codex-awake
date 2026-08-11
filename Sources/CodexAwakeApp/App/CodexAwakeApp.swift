@@ -41,6 +41,14 @@ struct CodexAwakeApp: App {
         }
         .menuBarExtraStyle(.menu)
 
+        Window("CodexAwake Cockpit", id: "cockpit") {
+            CockpitView()
+                .environmentObject(model)
+        }
+        .defaultSize(width: 1080, height: 720)
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
+
         Window("CodexAwake Diagnostics", id: "diagnostics") {
             DiagnosticsView()
                 .environmentObject(model)

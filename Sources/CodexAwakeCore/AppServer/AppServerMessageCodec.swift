@@ -60,11 +60,24 @@ public enum AppServerMessageCodec {
         ]))
     }
 
+    public static func response(id: Int, result: JSONValue) throws -> String {
+        try encode(.object([
+            "id": .number(Double(id)),
+            "result": result
+        ]))
+    }
+
     public static func event(method: String, params: JSONValue?) -> AppServerEvent {
         let threadId = params?["threadId"]?.stringValue
         let turnId = params?["turn"]?["id"]?.stringValue ?? params?["turnId"]?.stringValue
 
         switch method {
+        case "thread/started":
+            guard let id = params?["thread"]?["id"]?.stringValue ?? threadId else {
+                return .unknown(method: method)
+            }
+            return .threadStarted(threadId: id)
+
         case "turn/started":
             guard let threadId, let turnId else { return .unknown(method: method) }
             return .turnStarted(.init(threadId: threadId, turnId: turnId))
@@ -82,8 +95,45 @@ public enum AppServerMessageCodec {
             guard let threadId else { return .unknown(method: method) }
             return .threadClosed(threadId: threadId)
 
+        case "item/agentMessage/delta":
+            guard let threadId,
+                  let turnId = params?["turnId"]?.stringValue,
+                  let itemId = params?["itemId"]?.stringValue,
+                  let delta = params?["delta"]?.stringValue else {
+                return .unknown(method: method)
+            }
+            return .agentMessageDelta(
+                threadId: threadId,
+                turnId: turnId,
+                itemId: itemId,
+                delta: delta
+            )
+
+        case "item/completed":
+            guard let threadId,
+                  let turnId = params?["turnId"]?.stringValue,
+                  let item = params?["item"],
+                  item["type"]?.stringValue == "agentMessage",
+                  let itemId = item["id"]?.stringValue,
+                  let text = item["text"]?.stringValue else {
+                return .ignored(method: method)
+            }
+            return .agentMessageCompleted(
+                threadId: threadId,
+                turnId: turnId,
+                itemId: itemId,
+                text: text,
+                phase: item["phase"]?.stringValue
+            )
+
+        case "error":
+            let message = params?["error"]?["message"]?.stringValue
+                ?? params?["message"]?.stringValue
+                ?? "Codex reported an unknown runtime error."
+            return .runtimeError(threadId: threadId, message: String(message.prefix(500)))
+
         default:
-            return .unknown(method: method)
+            return .ignored(method: method)
         }
     }
 

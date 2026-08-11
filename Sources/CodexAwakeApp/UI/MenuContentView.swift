@@ -18,7 +18,8 @@ struct MenuContentView: View {
 
         if !model.firstRunAcknowledged {
             Divider()
-            Text("Tracks only Codex CLI/TUI sessions connected with --remote to this app's managed App Server.")
+            Text("Tracks cockpit tasks and Codex CLI/TUI sessions connected to this app's managed App Server.")
+            Text("Independent ChatGPT Desktop chats are not exposed to third-party monitoring.")
             Text("It prevents idle sleep; it does not bypass lid-close sleep.")
             Button("I Understand") { model.acknowledgeFirstRun() }
                 .accessibilityLabel("Acknowledge CodexAwake tracking scope")
@@ -33,8 +34,12 @@ struct MenuContentView: View {
         }
 
         Divider()
-        Text("Only managed --remote sessions are tracked")
+        Text("Managed CodexAwake tasks are tracked")
+        Text("Independent ChatGPT Desktop chats are private")
         Text("Prevents idle sleep only; lid-close policy still applies")
+        Button("Open Cockpit…") { openWindow(id: "cockpit") }
+            .keyboardShortcut("k")
+            .accessibilityLabel("Open the CodexAwake cockpit")
         Button("Open Codex") { model.openCodex() }
             .disabled(model.codexCommand == nil || model.appServerState != .running)
             .keyboardShortcut("o")

@@ -1,11 +1,24 @@
 # CodexAwake
 
-CodexAwake is a native macOS menu bar utility that launches its own local Codex App Server and prevents **idle system sleep** while that server reports one or more active Codex threads.
+CodexAwake is a native macOS menu bar utility and Codex cockpit. It launches its own local Codex App Server, provides a streamed chat UI for Codex, and prevents **idle system sleep** while that server reports one or more active Codex threads.
 
 It uses the official App Server protocol rather than guessing from process existence, CPU usage, windows, or file timestamps. CodexAwake owns at most one `PreventUserIdleSystemSleep` assertion, whether one or ten managed chats are active. The display may still turn off.
 
 > [!IMPORTANT]
-> CodexAwake tracks only Codex CLI/TUI sessions connected with `--remote` to the App Server launched by CodexAwake. It does not automatically track ordinary CLI sessions, independent Codex/ChatGPT desktop sessions, Codex Cloud, another user's processes, or remote hosts that are not connected to this managed server.
+> CodexAwake tracks its own cockpit tasks and Codex CLI/TUI sessions connected with `--remote` to the App Server launched by CodexAwake. The independent ChatGPT desktop app does not publish an API that lets another local app enumerate its open chats or active turns, so CodexAwake does not claim to monitor them. It also does not track ordinary CLI sessions, Codex Cloud, another user's processes, or remote hosts that are not connected to this managed server.
+
+## Cockpit
+
+Open **Open Cockpit…** from the menu bar. The dark graphite and silver native SwiftUI interface includes:
+
+- a large illuminated **ON/OFF** control for automatic sleep protection;
+- App Server, assertion, and active managed-task instruments;
+- the IDs of all active tasks connected to the managed server;
+- a project picker and streamed Codex conversation;
+- **New task**, **Stop**, and Command-Return send controls;
+- approval cards for shell commands, network access, and file changes.
+
+The cockpit uses the authenticated [Codex App Server](https://learn.chatgpt.com/docs/app-server), not a separately stored API key. Select a project folder before starting a task. Codex is given workspace-write access to that folder and uses the `unlessTrusted` approval policy; approval prompts remain visible while the task is active.
 
 ## How it works
 
@@ -37,6 +50,7 @@ The runtime status returned by `thread/read` is the source of truth. Notificatio
 
 Tracked:
 
+- tasks started in the CodexAwake cockpit;
 - Codex CLI/TUI clients launched with the menu's **Open Codex** action;
 - clients started manually with the command from **Copy Codex command**;
 - multiple clients connected to the same CodexAwake-managed endpoint;
@@ -51,7 +65,7 @@ Not tracked:
 - unrelated App Server processes;
 - remote machines not using the displayed endpoint.
 
-The first-run menu, Diagnostics window, and controls beside **Open Codex** repeat this boundary.
+The first-run menu, cockpit, Diagnostics window, and controls beside **Open Codex** repeat this boundary. CodexAwake deliberately does not treat the mere presence of a ChatGPT process as active work.
 
 ## Requirements
 
@@ -84,10 +98,11 @@ CONFIGURATION=debug scripts/build_app.sh
 
 ## First launch
 
-CodexAwake has no Dock icon (`LSUIElement=true`). Look for the bolt icon in the menu bar. On first launch it shows two facts that must be acknowledged:
+CodexAwake has no Dock icon (`LSUIElement=true`). Look for the bolt icon in the menu bar and choose **Open Cockpit…**. On first launch the menu shows these facts:
 
-1. only sessions connected to its managed `--remote` endpoint are tracked;
-2. the application prevents idle sleep and does not bypass lid-close sleep policy.
+1. cockpit tasks and sessions connected to its managed `--remote` endpoint are tracked;
+2. independent ChatGPT Desktop chats are not visible to third-party monitoring;
+3. the application prevents idle sleep and does not bypass lid-close sleep policy.
 
 If Codex cannot be found, the menu shows `Codex: Not found` and App Server state `Failed`. Open **Diagnostics… → Choose Codex Binary…** to select an executable.
 
@@ -111,7 +126,7 @@ CodexAwake launches exactly one owned child process with the current equivalent 
 codex app-server --listen unix:///private/runtime/path/app-server.sock
 ```
 
-The endpoint is a WebSocket HTTP Upgrade over a Unix domain socket, as specified by the [official Codex App Server documentation](https://developers.openai.com/codex/app-server). The runtime directory is short, per-user, mode `0700`, and outside the repository. CodexAwake removes a stale socket only when it is an owned Unix socket that does not accept connections. It refuses active, foreign-owned, or non-socket paths.
+The endpoint is a WebSocket HTTP Upgrade over a Unix domain socket, as specified by the [official Codex App Server documentation](https://learn.chatgpt.com/docs/app-server). The runtime directory is short, per-user, mode `0700`, and outside the repository. CodexAwake removes a stale socket only when it is an owned Unix socket that does not accept connections. It refuses active, foreign-owned, or non-socket paths.
 
 No TCP port is opened. The CodexAwake process makes no external network connection; it communicates locally with the Codex child. The Codex App Server itself performs the normal Codex service communication needed by connected CLI sessions.
 
@@ -161,7 +176,7 @@ The menu's **Launch at Login** toggle uses `SMAppService.mainApp`. CodexAwake do
 - assertion state, last event/reconciliation, reconnect count;
 - the latest sanitized operational error.
 
-It excludes prompts, model responses, diffs, tool output, terminal output, file contents, tokens, credentials, cookies, auth files, and complete environment variables. There is no telemetry.
+It excludes prompts, model responses, diffs, tool output, terminal output, file contents, tokens, credentials, cookies, auth files, and complete environment variables. Cockpit messages are held in the current UI session and sent to the managed Codex server, but are never copied into Diagnostics or OSLog. Codex persists normal conversation history according to its own configuration. There is no CodexAwake telemetry.
 
 ## Verify the assertion
 
@@ -193,7 +208,7 @@ Some Codex versions may expose their own experimental prevent-idle-sleep feature
 - Unix socket runtime directory: `0700`;
 - no listening TCP interface;
 - no credentials in arguments, clipboard, logs, or helper script;
-- no prompt, response, diff, tool, terminal, or file-content logging;
+- no prompt, response, diff, tool, terminal, or file-content logging (cockpit text exists only in UI memory and normal Codex conversation storage);
 - no telemetry or CodexAwake outbound network client;
 - only the exact child process started by CodexAwake is terminated;
 - OSLog contains lifecycle/state/counts and sanitized errors only.

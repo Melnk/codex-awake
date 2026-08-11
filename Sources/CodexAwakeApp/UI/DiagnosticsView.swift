@@ -22,7 +22,7 @@ struct DiagnosticsView: View {
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                 Button("Choose Codex Binary…") { model.chooseCodexBinary() }
                 Spacer()
-                Text("Only this app's managed --remote sessions are tracked.")
+                Text("Only this app's managed Codex tasks are tracked.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

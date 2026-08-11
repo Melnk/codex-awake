@@ -82,6 +82,19 @@ final class ActivityAndPowerTests: XCTestCase {
         XCTAssertEqual(result.activeCount, 1)
     }
 
+    func testStreamingChatEventDoesNotChangeActivityCertainty() async {
+        let tracker = ThreadActivityTracker()
+        _ = await tracker.apply(.threadStatusChanged(threadId: "a", status: .init(kind: .active)))
+        let result = await tracker.apply(.agentMessageDelta(
+            threadId: "a",
+            turnId: "1",
+            itemId: "message-1",
+            delta: "Working"
+        ))
+        XCTAssertEqual(result.activeThreadIds, ["a"])
+        XCTAssertEqual(result.certainty, .known)
+    }
+
     func testDuplicateIdleAndCompletedAreSafe() async {
         let tracker = ThreadActivityTracker()
         let key = TurnKey(threadId: "a", turnId: "1")

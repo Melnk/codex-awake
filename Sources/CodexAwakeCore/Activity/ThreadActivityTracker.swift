@@ -12,6 +12,9 @@ public actor ThreadActivityTracker {
     @discardableResult
     public func apply(_ event: AppServerEvent) -> ActivitySnapshot {
         switch event {
+        case .threadStarted(let threadId):
+            loadedThreadIds.insert(threadId)
+
         case .turnStarted(let key):
             activeTurnKeys.insert(key)
             activeThreadIds.insert(key.threadId)
@@ -44,6 +47,9 @@ public actor ThreadActivityTracker {
             activeTurnKeys = activeTurnKeys.filter { $0.threadId != threadId }
             statuses[threadId] = .init(kind: .notLoaded)
             loadedThreadIds.remove(threadId)
+
+        case .agentMessageDelta, .agentMessageCompleted, .runtimeError, .ignored:
+            return snapshot()
 
         case .unknown:
             certainty = .unknownReconnecting

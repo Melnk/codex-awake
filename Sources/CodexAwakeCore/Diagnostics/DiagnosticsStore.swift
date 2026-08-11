@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 public struct DiagnosticsSnapshot: Equatable, Sendable {
-    public var appVersion = "1.0.0 (1)"
+    public var appVersion = "1.1.0 (2)"
     public var macOSVersion = ProcessInfo.processInfo.operatingSystemVersionString
     public var architecture = "unknown"
     public var codexPath: String?
@@ -50,7 +50,7 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
         Reconnects: \(reconnectCount)
         Last safe error: \(lastSafeError ?? "none")
 
-        Scope: only Codex CLI/TUI sessions connected with --remote to the App Server managed by CodexAwake are tracked. Independent CLI, desktop, cloud, other-user, and remote-host sessions are not tracked.
+        Scope: cockpit tasks and Codex CLI/TUI sessions connected to the App Server managed by CodexAwake are tracked. Independent CLI, ChatGPT/Codex desktop, cloud, other-user, and remote-host sessions are not tracked.
         Closed lid: CodexAwake prevents idle system sleep; it does not bypass macOS lid-close sleep policy.
         """
     }

@@ -17,6 +17,12 @@ final class AppModel: ObservableObject {
     @Published var launchAtLogin = false
     @Published var firstRunAcknowledged: Bool
     @Published var autoKeepAwake: Bool
+    @Published var workspacePath: String?
+    @Published var chatMessages: [CodexChatMessage] = []
+    @Published var chatThreadID: String?
+    @Published var chatTurnID: String?
+    @Published var chatIsSending = false
+    @Published var approvalRequests: [CodexApprovalRequest] = []
 
     let diagnostics = DiagnosticsStore()
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "App")
@@ -33,6 +39,8 @@ final class AppModel: ObservableObject {
     private var runtime: SocketPathManager.Runtime?
     private var connectionLoopTask: Task<Void, Never>?
     private var isShuttingDown = false
+    private var chatGenerationID: UUID?
+    private var approvalContinuations: [Int: CheckedContinuation<JSONValue, Never>] = [:]
     private var lastEventAt: Date?
     private var lastReconciliationAt: Date?
     private let startedAt = Date()
@@ -41,6 +49,12 @@ final class AppModel: ObservableObject {
         let auto = defaults.object(forKey: "AutoKeepAwake") as? Bool ?? true
         autoKeepAwake = auto
         firstRunAcknowledged = defaults.bool(forKey: "FirstRunAcknowledged")
+        if let savedWorkspace = defaults.string(forKey: "CodexWorkspacePath"),
+           FileManager.default.fileExists(atPath: savedWorkspace) {
+            workspacePath = savedWorkspace
+        } else {
+            workspacePath = nil
+        }
         coordinator = AwakeCoordinator(power: power, autoKeepAwake: auto)
         launchAtLogin = launchManager.isEnabled
     }
@@ -72,6 +86,8 @@ final class AppModel: ObservableObject {
 
     func stopServer() {
         Task {
+            cancelPendingApprovals()
+            markChatDisconnected("The managed Codex server was stopped.")
             connectionLoopTask?.cancel()
             connectionLoopTask = nil
             await client?.disconnect()
@@ -82,6 +98,8 @@ final class AppModel: ObservableObject {
 
     func restartServer() {
         Task {
+            cancelPendingApprovals()
+            markChatDisconnected("The managed Codex server is restarting.")
             await client?.disconnect()
             client = nil
             do {
@@ -171,6 +189,85 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func chooseWorkspace() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a project for Codex"
+        panel.prompt = "Use Project"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        if let workspacePath {
+            panel.directoryURL = URL(fileURLWithPath: workspacePath)
+        }
+        if panel.runModal() == .OK, let path = panel.url?.standardizedFileURL.path {
+            workspacePath = path
+            UserDefaults.standard.set(path, forKey: "CodexWorkspacePath")
+            newChat()
+        }
+    }
+
+    func sendPrompt(_ prompt: String) {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty,
+              !chatIsSending,
+              let workspacePath,
+              appServerState == .running,
+              let client else { return }
+
+        let generationID = UUID()
+        chatGenerationID = generationID
+        chatIsSending = true
+        chatMessages.append(.init(role: .user, text: text))
+
+        Task {
+            do {
+                var threadID = chatThreadID
+                if threadID == nil {
+                    threadID = try await client.startThread(cwd: workspacePath)
+                    guard chatGenerationID == generationID else { return }
+                    chatThreadID = threadID
+                }
+                guard let threadID else { throw CodexAwakeError.malformedMessage }
+                let turnID = try await client.startTurn(threadId: threadID, text: text, cwd: workspacePath)
+                guard chatGenerationID == generationID else { return }
+                chatTurnID = turnID
+            } catch {
+                guard chatGenerationID == generationID else { return }
+                chatGenerationID = nil
+                chatIsSending = false
+                appendSystemMessage(SafeDisplay.sanitizedError(error))
+            }
+        }
+    }
+
+    func interruptChat() {
+        guard let client, let threadID = chatThreadID, let turnID = chatTurnID else { return }
+        Task {
+            do {
+                try await client.interruptTurn(threadId: threadID, turnId: turnID)
+            } catch {
+                appendSystemMessage(SafeDisplay.sanitizedError(error))
+            }
+        }
+    }
+
+    func newChat() {
+        if let client, let threadID = chatThreadID, let turnID = chatTurnID {
+            Task { try? await client.interruptTurn(threadId: threadID, turnId: turnID) }
+        }
+        chatGenerationID = nil
+        chatThreadID = nil
+        chatTurnID = nil
+        chatIsSending = false
+        chatMessages.removeAll()
+    }
+
+    func resolveApproval(_ request: CodexApprovalRequest, decision: CodexApprovalDecision) {
+        approvalRequests.removeAll { $0.id == request.id }
+        approvalContinuations.removeValue(forKey: request.id)?.resume(returning: .string(decision.rawValue))
+    }
+
     func requestQuit() {
         NSApplication.shared.terminate(nil)
     }
@@ -178,6 +275,7 @@ final class AppModel: ObservableObject {
     func shutdown() async {
         guard !isShuttingDown else { return }
         isShuttingDown = true
+        cancelPendingApprovals()
         connectionLoopTask?.cancel()
         connectionLoopTask = nil
         await client?.disconnect()
@@ -206,6 +304,9 @@ final class AppModel: ObservableObject {
                     endpoint: runtime.endpoint,
                     socketPath: runtime.socket.path,
                     eventHandler: { [weak self] event in await self?.handle(event) },
+                    serverRequestHandler: { [weak self] request in
+                        await self?.handleServerRequest(request)
+                    },
                     disconnectHandler: { [weak self] reason in await self?.handleDisconnect(reason) }
                 )
                 try await newClient.connect()
@@ -239,9 +340,18 @@ final class AppModel: ObservableObject {
 
     private func handle(_ event: AppServerEvent) async {
         lastEventAt = Date()
+        switch event {
+        case .agentMessageDelta, .agentMessageCompleted, .runtimeError, .ignored:
+            handleChatEvent(event)
+            return
+        default:
+            break
+        }
+
         let snapshot = await tracker.apply(event)
         await coordinator.update(snapshot)
         activity = snapshot
+        handleChatEvent(event)
         if case .unknown = event {
             if let client { await reconcile(using: client) }
         } else {
@@ -252,6 +362,8 @@ final class AppModel: ObservableObject {
     private func handleDisconnect(_ reason: String) async {
         guard !isShuttingDown else { return }
         lastSafeError = String(reason.prefix(300))
+        cancelPendingApprovals()
+        markChatDisconnected("Connection to the managed Codex server was lost.")
         let unknown = await tracker.markConnectionUnknown()
         await coordinator.update(unknown)
         activity = unknown
@@ -299,7 +411,7 @@ final class AppModel: ObservableObject {
 
     private func updateDiagnostics() {
         var value = DiagnosticsSnapshot()
-        value.appVersion = "1.0.0 (1)"
+        value.appVersion = "1.1.0 (2)"
         value.architecture = Self.architecture
         value.codexPath = codexPath
         value.codexVersion = codexVersion
@@ -314,6 +426,129 @@ final class AppModel: ObservableObject {
         value.reconnectCount = reconnectCount
         value.lastSafeError = lastSafeError
         diagnostics.snapshot = value
+    }
+
+    private func handleChatEvent(_ event: AppServerEvent) {
+        switch event {
+        case .agentMessageDelta(let threadID, _, let itemID, let delta):
+            guard threadID == chatThreadID else { return }
+            if let index = chatMessages.firstIndex(where: { $0.itemId == itemID }) {
+                chatMessages[index].text += delta
+                chatMessages[index].isStreaming = true
+            } else {
+                chatMessages.append(.init(
+                    role: .assistant,
+                    text: delta,
+                    itemId: itemID,
+                    isStreaming: true
+                ))
+            }
+
+        case .agentMessageCompleted(let threadID, _, let itemID, let text, let phase):
+            guard threadID == chatThreadID else { return }
+            if let index = chatMessages.firstIndex(where: { $0.itemId == itemID }) {
+                chatMessages[index].text = text
+                chatMessages[index].phase = phase
+                chatMessages[index].isStreaming = false
+            } else {
+                chatMessages.append(.init(
+                    role: .assistant,
+                    text: text,
+                    itemId: itemID,
+                    phase: phase
+                ))
+            }
+
+        case .turnCompleted(let key, let status):
+            guard key.threadId == chatThreadID,
+                  chatTurnID == nil || key.turnId == chatTurnID else { return }
+            chatGenerationID = nil
+            chatTurnID = nil
+            chatIsSending = false
+            for index in chatMessages.indices where chatMessages[index].isStreaming {
+                chatMessages[index].isStreaming = false
+            }
+            if let status, status != "completed", status != "interrupted" {
+                appendSystemMessage("Codex turn ended with status: \(status).")
+            }
+
+        case .runtimeError(let threadID, let message):
+            guard threadID == nil || threadID == chatThreadID else { return }
+            appendSystemMessage(message)
+
+        default:
+            break
+        }
+    }
+
+    private func handleServerRequest(_ request: AppServerServerRequest) async -> JSONValue? {
+        let kind: CodexApprovalKind
+        switch request.method {
+        case "item/commandExecution/requestApproval": kind = .command
+        case "item/fileChange/requestApproval": kind = .fileChange
+        default: return nil
+        }
+
+        let approval = CodexApprovalRequest(
+            id: request.id,
+            kind: kind,
+            title: approvalTitle(kind: kind, params: request.params),
+            detail: approvalDetail(kind: kind, params: request.params),
+            threadId: request.params?["threadId"]?.stringValue,
+            turnId: request.params?["turnId"]?.stringValue
+        )
+        return await withCheckedContinuation { continuation in
+            approvalRequests.append(approval)
+            approvalContinuations[request.id] = continuation
+        }
+    }
+
+    private func approvalTitle(kind: CodexApprovalKind, params: JSONValue?) -> String {
+        if let host = params?["networkApprovalContext"]?["host"]?.stringValue {
+            return "Allow network access to \(host)?"
+        }
+        return kind == .command ? "Allow this command?" : "Allow these file changes?"
+    }
+
+    private func approvalDetail(kind: CodexApprovalKind, params: JSONValue?) -> String {
+        if let reason = params?["reason"]?.stringValue, !reason.isEmpty {
+            return String(reason.prefix(600))
+        }
+        if kind == .command {
+            if let command = params?["command"]?.stringValue {
+                return String(command.prefix(600))
+            }
+            if let command = params?["command"]?.arrayValue?.compactMap(\.stringValue), !command.isEmpty {
+                return String(command.joined(separator: " ").prefix(600))
+            }
+            return "Codex wants to run a command in the selected workspace."
+        }
+        if let root = params?["grantRoot"]?.stringValue {
+            return "Codex wants to write inside \(root)."
+        }
+        return "Codex wants to apply file changes in the selected workspace."
+    }
+
+    private func cancelPendingApprovals() {
+        let continuations = approvalContinuations.values
+        approvalContinuations.removeAll()
+        approvalRequests.removeAll()
+        for continuation in continuations {
+            continuation.resume(returning: .string(CodexApprovalDecision.cancel.rawValue))
+        }
+    }
+
+    private func markChatDisconnected(_ message: String) {
+        guard chatIsSending else { return }
+        chatGenerationID = nil
+        chatTurnID = nil
+        chatIsSending = false
+        appendSystemMessage(message)
+    }
+
+    private func appendSystemMessage(_ text: String) {
+        guard chatMessages.last?.role != .system || chatMessages.last?.text != text else { return }
+        chatMessages.append(.init(role: .system, text: String(text.prefix(500))))
     }
 
     private static var architecture: String {

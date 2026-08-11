@@ -6,7 +6,9 @@
 
 `UnixWebSocketTransport` implements RFC 6455 client framing and the HTTP Upgrade handshake directly over `AF_UNIX`. It validates `Sec-WebSocket-Accept`, masks client frames, handles ping/pong/close, limits payloads to 16 MiB, and exposes no TCP listener.
 
-`AppServerClient` performs `initialize` then `initialized`, allocates monotonically increasing request IDs, matches responses to continuations, times out pending calls, converts relevant notifications into privacy-safe typed events, rejects unsolicited server requests it cannot serve, and survives malformed JSON.
+`AppServerClient` performs `initialize` then `initialized`, allocates monotonically increasing request IDs, matches responses to continuations, times out pending calls, converts relevant notifications into typed events, routes command/file approval requests to the cockpit, rejects server requests it cannot serve, and survives malformed JSON.
+
+The cockpit starts a conversation with `thread/start`, sends user input with `turn/start`, renders `item/agentMessage/delta`, treats the final `item/completed` agent message as authoritative, interrupts with `turn/interrupt`, and answers command/file approval requests. Each turn uses the selected folder as its only explicit writable root.
 
 `ThreadActivityTracker` is an actor and owns:
 
@@ -15,7 +17,7 @@
 - runtime statuses and loaded IDs;
 - known versus unknown/reconnecting certainty.
 
-Events provide low latency. Connection/reconnection/startup and a 10-second timer call `thread/loaded/list`, then `thread/read` for each loaded ID. Reconciliation replaces the active set from runtime `thread.status`; prompt/turn contents are never requested.
+Lifecycle events provide low latency. Chat-only item events do not mutate activity certainty or sleep state. Connection/reconnection/startup and a 10-second timer call `thread/loaded/list`, then `thread/read` for each loaded ID. Reconciliation replaces the active set from runtime `thread.status`; turn contents are never requested by the sleep tracker.
 
 `AwakeCoordinator` maps activity to the `PowerAssertionControlling` protocol. The production `PowerAssertionManager` owns zero or one `IOPMAssertionID` of type `PreventUserIdleSystemSleep`. A one-second idle debounce avoids churn. Unknown connection state uses a 30-second grace limit. Confirmed server termination and application termination release immediately.
 
@@ -45,7 +47,7 @@ An accepting socket, foreign owner, directory, symlink target mismatch, or regul
 
 ## Privacy boundary
 
-The protocol decoder extracts method, request ID, thread ID, turn ID, status type, and active flags. UI and logs never consume prompt previews, turn item content, responses, diffs, tool output, or terminal output. Diagnostics abbreviate identifiers and sanitize errors to one line/300 characters.
+The activity path extracts method, request ID, thread ID, turn ID, status type, and active flags. The cockpit separately renders user text and streamed agent messages for its current conversation. These contents are not forwarded to Diagnostics or OSLog. Diffs, tool output, terminal output, and file contents are not rendered or logged. Diagnostics abbreviate identifiers and sanitize errors to one line/300 characters.
 
 CodexAwake has no telemetry and creates no external network session. The supervised Codex process retains its ordinary responsibility for authenticated upstream Codex communication.
 

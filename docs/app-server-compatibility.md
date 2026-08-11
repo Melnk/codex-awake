@@ -14,9 +14,9 @@ codex app-server generate-json-schema --out .build/codex-schema/json
 codex app-server generate-ts --out .build/codex-schema/typescript
 ```
 
-On the development machine used for this checkout on 2026-08-10, all three `codex` preflight commands returned `command not found`, including login-shell and fixed-path checks. Schema generation and a real server launch were therefore not performed. No minimum real Codex version is claimed as tested. `.build/codex-schema/` is ignored and generated dumps must not be committed unless a small compile-time model is deliberately selected.
+On the development machine used for this checkout on 2026-08-11, all three `codex` preflight commands returned `command not found`, including login-shell and fixed-path checks. Schema generation and a real server launch were therefore not performed. No minimum real Codex version is claimed as tested. `.build/codex-schema/` is ignored and generated dumps must not be committed unless a small compile-time model is deliberately selected.
 
-The implementation was compared with the current [official Codex App Server documentation](https://developers.openai.com/codex/app-server), which documents:
+The implementation was compared with the current [official Codex App Server documentation](https://learn.chatgpt.com/docs/app-server), which documents:
 
 - `codex app-server --listen unix://PATH`;
 - `codex --remote unix://PATH`;
@@ -25,6 +25,9 @@ The implementation was compared with the current [official Codex App Server docu
 - `initialize` followed by `initialized`;
 - `thread/list`, `thread/read`, `thread/loaded/list`;
 - `thread/status/changed`, `turn/started`, `turn/completed`, `thread/closed`;
+- `thread/start`, `turn/start`, `turn/interrupt`;
+- `item/agentMessage/delta` and authoritative agent-message `item/completed` events;
+- command/file-change server requests and approval decision responses;
 - runtime statuses `notLoaded`, `idle`, `systemError`, and `active` with `activeFlags`.
 
 ## Runtime compatibility gate

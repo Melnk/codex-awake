@@ -42,6 +42,92 @@ final class ProtocolAndLifecycleTests: XCTestCase {
         await client.disconnect()
     }
 
+    func testAgentMessageDeltaDecoding() throws {
+        let message = try AppServerMessageCodec.decode("""
+        {"method":"item/agentMessage/delta","params":{"threadId":"thread-a","turnId":"turn-a","itemId":"item-a","delta":"Hello"}}
+        """)
+        guard case .notification(let method, let params) = message else {
+            return XCTFail("Expected notification")
+        }
+        XCTAssertEqual(
+            AppServerMessageCodec.event(method: method, params: params),
+            .agentMessageDelta(threadId: "thread-a", turnId: "turn-a", itemId: "item-a", delta: "Hello")
+        )
+    }
+
+    func testCompletedAgentMessageIsAuthoritative() throws {
+        let event = AppServerMessageCodec.event(
+            method: "item/completed",
+            params: .object([
+                "threadId": .string("thread-a"),
+                "turnId": .string("turn-a"),
+                "item": .object([
+                    "type": .string("agentMessage"),
+                    "id": .string("item-a"),
+                    "text": .string("Final answer"),
+                    "phase": .string("final_answer")
+                ])
+            ])
+        )
+        XCTAssertEqual(
+            event,
+            .agentMessageCompleted(
+                threadId: "thread-a",
+                turnId: "turn-a",
+                itemId: "item-a",
+                text: "Final answer",
+                phase: "final_answer"
+            )
+        )
+    }
+
+    func testUnrelatedNotificationsAreIgnoredWithoutProtocolFailure() {
+        XCTAssertEqual(
+            AppServerMessageCodec.event(method: "item/started", params: .object([:])),
+            .ignored(method: "item/started")
+        )
+    }
+
+    func testCockpitStartsThreadAndTurnWithWorkspacePolicy() async throws {
+        let transport = ScriptedTransport()
+        let client = makeClient(transport: transport, collector: EventCollector())
+        try await client.connect()
+        let threadID = try await client.startThread(cwd: "/tmp/project")
+        let turnID = try await client.startTurn(threadId: threadID, text: "Inspect the project", cwd: "/tmp/project")
+
+        XCTAssertEqual(threadID, "cockpit-thread")
+        XCTAssertEqual(turnID, "cockpit-turn")
+        let sent = transport.sent.joined(separator: "\n")
+        XCTAssertTrue(sent.contains("\"method\":\"thread/start\""))
+        XCTAssertTrue(sent.contains("\"approvalPolicy\":\"unlessTrusted\""))
+        XCTAssertTrue(sent.contains("\"writableRoots\":[\"/tmp/project\"]"))
+        XCTAssertTrue(sent.contains("Inspect the project"))
+        await client.disconnect()
+    }
+
+    func testApprovalRequestReceivesDecisionResponse() async throws {
+        let transport = ScriptedTransport()
+        let collector = EventCollector()
+        let client = AppServerClient(
+            endpoint: "unix:///tmp/fake.sock",
+            socketPath: "/tmp/fake.sock",
+            timeout: .seconds(1),
+            transportFactory: { _ in transport },
+            eventHandler: { event in await collector.append(event) },
+            serverRequestHandler: { request in
+                request.method == "item/commandExecution/requestApproval" ? .string("accept") : nil
+            },
+            disconnectHandler: { _ in await collector.disconnected() }
+        )
+        try await client.connect()
+        transport.push("""
+        {"id":91,"method":"item/commandExecution/requestApproval","params":{"threadId":"thread-a","turnId":"turn-a","itemId":"item-a","command":"swift test"}}
+        """)
+        try? await Task.sleep(for: .milliseconds(30))
+        XCTAssertTrue(transport.sent.contains(where: { $0.contains("\"id\":91") && $0.contains("\"result\":\"accept\"") }))
+        await client.disconnect()
+    }
+
     func testMalformedPayloadThenValidNotification() async throws {
         let transport = ScriptedTransport()
         let collector = EventCollector()

@@ -4,6 +4,7 @@ import OSLog
 public actor AppServerClient {
     public typealias TransportFactory = @Sendable (String) -> any LocalWebSocketTransport
     public typealias EventHandler = @Sendable (AppServerEvent) async -> Void
+    public typealias ServerRequestHandler = @Sendable (AppServerServerRequest) async -> JSONValue?
     public typealias DisconnectHandler = @Sendable (String) async -> Void
 
     private struct PendingRequest {
@@ -16,6 +17,7 @@ public actor AppServerClient {
     private let timeout: Duration
     private let transportFactory: TransportFactory
     private let eventHandler: EventHandler
+    private let serverRequestHandler: ServerRequestHandler
     private let disconnectHandler: DisconnectHandler
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "AppServerClient")
 
@@ -31,6 +33,7 @@ public actor AppServerClient {
         timeout: Duration = .seconds(10),
         transportFactory: @escaping TransportFactory = { UnixWebSocketTransport(socketPath: $0) },
         eventHandler: @escaping EventHandler,
+        serverRequestHandler: @escaping ServerRequestHandler = { _ in nil },
         disconnectHandler: @escaping DisconnectHandler
     ) {
         self.endpoint = endpoint
@@ -38,6 +41,7 @@ public actor AppServerClient {
         self.timeout = timeout
         self.transportFactory = transportFactory
         self.eventHandler = eventHandler
+        self.serverRequestHandler = serverRequestHandler
         self.disconnectHandler = disconnectHandler
     }
 
@@ -56,7 +60,7 @@ public actor AppServerClient {
                     "clientInfo": .object([
                         "name": .string("codex_awake"),
                         "title": .string("CodexAwake"),
-                        "version": .string("1.0.0")
+                        "version": .string("1.1.0")
                     ])
                 ])
             )
@@ -90,6 +94,58 @@ public actor AppServerClient {
             statuses[id] = .parse(result["thread"]?["status"])
         }
         return (ids, statuses)
+    }
+
+    public func startThread(cwd: String) async throws -> String {
+        let result = try await request(
+            method: "thread/start",
+            params: .object([
+                "cwd": .string(cwd),
+                "approvalPolicy": .string("unlessTrusted"),
+                "sandbox": .string("workspaceWrite"),
+                "serviceName": .string("codex_awake")
+            ])
+        )
+        guard let threadId = result["thread"]?["id"]?.stringValue else {
+            throw CodexAwakeError.malformedMessage
+        }
+        return threadId
+    }
+
+    public func startTurn(threadId: String, text: String, cwd: String) async throws -> String {
+        let result = try await request(
+            method: "turn/start",
+            params: .object([
+                "threadId": .string(threadId),
+                "input": .array([
+                    .object([
+                        "type": .string("text"),
+                        "text": .string(text)
+                    ])
+                ]),
+                "cwd": .string(cwd),
+                "approvalPolicy": .string("unlessTrusted"),
+                "sandboxPolicy": .object([
+                    "type": .string("workspaceWrite"),
+                    "writableRoots": .array([.string(cwd)]),
+                    "networkAccess": .bool(true)
+                ])
+            ])
+        )
+        guard let turnId = result["turn"]?["id"]?.stringValue else {
+            throw CodexAwakeError.malformedMessage
+        }
+        return turnId
+    }
+
+    public func interruptTurn(threadId: String, turnId: String) async throws {
+        _ = try await request(
+            method: "turn/interrupt",
+            params: .object([
+                "threadId": .string(threadId),
+                "turnId": .string(turnId)
+            ])
+        )
     }
 
     public func request(method: String, params: JSONValue = .object([:])) async throws -> JSONValue {
@@ -150,8 +206,13 @@ public actor AppServerClient {
             pending.removeValue(forKey: id)?.continuation.resume(throwing: CodexAwakeError.remoteError(code: code, message: message))
         case .notification(let method, let params):
             await eventHandler(AppServerMessageCodec.event(method: method, params: params))
-        case .serverRequest(let id, _, _):
-            try await send(text: AppServerMessageCodec.methodNotFound(id: id))
+        case .serverRequest(let id, let method, let params):
+            let request = AppServerServerRequest(id: id, method: method, params: params)
+            if let result = await serverRequestHandler(request) {
+                try await send(text: AppServerMessageCodec.response(id: id, result: result))
+            } else {
+                try await send(text: AppServerMessageCodec.methodNotFound(id: id))
+            }
         }
     }
 
