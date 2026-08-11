@@ -99,7 +99,7 @@ final class ProtocolAndLifecycleTests: XCTestCase {
         XCTAssertEqual(turnID, "cockpit-turn")
         let sent = transport.sent.joined(separator: "\n")
         XCTAssertTrue(sent.contains("\"method\":\"thread/start\""))
-        XCTAssertTrue(sent.contains("\"approvalPolicy\":\"unlessTrusted\""))
+        XCTAssertTrue(sent.contains("\"approvalPolicy\":\"on-request\""))
         XCTAssertTrue(sent.contains("\"sandbox\":\"workspace-write\""))
         XCTAssertTrue(sent.contains("\"writableRoots\":[\"/tmp/project\"]"))
         XCTAssertTrue(sent.contains("Inspect the project"))

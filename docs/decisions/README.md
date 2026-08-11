@@ -32,9 +32,9 @@
 
 **Decision:** record the version for Diagnostics, probe current help for required transports/flags, decode only minimal fields, and fail visibly on incompatibility. Do not depend on a stale hard-coded full schema or opt into unrelated experimental APIs.
 
-## ADR-009 — Separate desktop presence from managed task state
+## ADR-009 — Combine managed events with privacy-safe Desktop lifecycle markers
 
-**Decision:** supervise and enumerate tasks only on the server CodexAwake owns. Detect the independent Codex Desktop process by its documented bundle identity as an ON/OFF keep-awake input, but never present that presence as a task or claim access to its private task contents/status. Independent cloud/plain CLI sessions retain separate lifecycle and security boundaries.
+**Decision:** use App Server status/events for the server CodexAwake owns. For independent Codex Desktop roots, read only rollout `session_meta` identity and the latest exact `task_started` / `task_complete` marker. Never parse or expose prompts, responses, reasoning, tool output, or titles. Keep bundle presence as a separate optional full-time wake input. Independent cloud/plain CLI sessions retain separate lifecycle and security boundaries.
 
 ## ADR-010 — Bounded unknown-state grace
 
@@ -43,3 +43,7 @@
 ## ADR-011 — Desktop runtime discovery
 
 **Decision:** after a user-selected override, probe the compatible Codex executable bundled in ChatGPT/Codex Desktop before shell and standard CLI paths. Capability probing remains authoritative, so an installed app bundle is not accepted merely by name.
+
+## ADR-012 — Installed schema is the compatibility authority
+
+**Decision:** generate and inspect the schema from the selected runtime when official examples and live validation disagree. For the tested bundled alpha runtime, `thread/start` uses `sandbox = workspace-write` and `approvalPolicy = on-request`; turn-level `sandboxPolicy.type = workspaceWrite` remains camel-case.

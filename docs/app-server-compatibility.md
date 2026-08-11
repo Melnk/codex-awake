@@ -41,7 +41,7 @@ CodexAwake accepts a binary only when:
 
 The exact version string is displayed but is not used as a substitute for capabilities. Incompatible versions produce a user-visible safe error and no server is launched.
 
-The runtime's generated `ThreadStartParams` schema and its live validation require the kebab-case request value `workspace-write`. Camel-case `workspaceWrite` appears in response/config models but is rejected for `thread/start`; a regression test asserts the request spelling.
+The runtime's generated `ThreadStartParams` schema and live validation require the request values `workspace-write` and `on-request`. The current official documentation examples still show older/camel-case values in places, so CodexAwake follows the installed runtime schema and keeps regression assertions for both fields. Camel-case `workspaceWrite` remains correct inside the turn-level `sandboxPolicy` object.
 
 ## Experimental surface
 

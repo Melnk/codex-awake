@@ -18,6 +18,7 @@ final class AppModel: ObservableObject {
     @Published var firstRunAcknowledged: Bool
     @Published var autoKeepAwake: Bool
     @Published var codexDesktopRunning = false
+    @Published var codexDesktopActiveSessionIDs: Set<String> = []
     @Published var keepAwakeForCodexDesktop: Bool
     @Published var workspacePath: String?
     @Published var chatMessages: [CodexChatMessage] = []
@@ -29,6 +30,7 @@ final class AppModel: ObservableObject {
     let diagnostics = DiagnosticsStore()
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "App")
     private let tracker = ThreadActivityTracker()
+    private let desktopRolloutScanner = CodexDesktopRolloutScanner()
     private let power = PowerAssertionManager()
     private let coordinator: AwakeCoordinator
     private let binaryLocator = CodexBinaryLocator()
@@ -40,7 +42,9 @@ final class AppModel: ObservableObject {
     private var client: AppServerClient?
     private var runtime: SocketPathManager.Runtime?
     private var connectionLoopTask: Task<Void, Never>?
+    private var desktopActivityTask: Task<Void, Never>?
     private var workspaceObserverTokens: [NSObjectProtocol] = []
+    private var codexDesktopLaunchDate: Date?
     private var isShuttingDown = false
     private var chatGenerationID: UUID?
     private var approvalContinuations: [Int: CheckedContinuation<JSONValue, Never>] = [:]
@@ -72,6 +76,7 @@ final class AppModel: ObservableObject {
         guard connectionLoopTask == nil else { return }
         logger.notice("CodexAwake lifecycle started")
         startCodexDesktopMonitoring()
+        startCodexDesktopActivityMonitoring()
         Task { await startManagedServer() }
     }
 
@@ -155,6 +160,10 @@ final class AppModel: ObservableObject {
     var codexCommand: String? {
         guard let codexPath, let endpoint else { return nil }
         return CodexCommandBuilder.command(binaryPath: codexPath, endpoint: endpoint)
+    }
+
+    var totalActiveSessionCount: Int {
+        activity.activeCount + codexDesktopActiveSessionIDs.count
     }
 
     func copyCodexCommand() {
@@ -297,6 +306,8 @@ final class AppModel: ObservableObject {
         guard !isShuttingDown else { return }
         isShuttingDown = true
         stopCodexDesktopMonitoring()
+        desktopActivityTask?.cancel()
+        desktopActivityTask = nil
         cancelPendingApprovals()
         connectionLoopTask?.cancel()
         connectionLoopTask = nil
@@ -449,11 +460,12 @@ final class AppModel: ObservableObject {
 
     private func updateDiagnostics() {
         var value = DiagnosticsSnapshot()
-        value.appVersion = "1.2.0 (3)"
+        value.appVersion = "1.2.1 (4)"
         value.architecture = Self.architecture
         value.codexPath = codexPath
         value.codexVersion = codexVersion
         value.codexDesktopRunning = codexDesktopRunning
+        value.codexDesktopActiveSessionIDs = codexDesktopActiveSessionIDs
         value.keepAwakeForCodexDesktop = keepAwakeForCodexDesktop
         value.endpoint = endpoint
         value.appServerState = appServerState
@@ -483,6 +495,21 @@ final class AppModel: ObservableObject {
         refreshCodexDesktopPresence()
     }
 
+    private func startCodexDesktopActivityMonitoring() {
+        guard desktopActivityTask == nil else { return }
+        desktopActivityTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                await self.refreshCodexDesktopActivity()
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
+                }
+            }
+        }
+    }
+
     private func stopCodexDesktopMonitoring() {
         let center = NSWorkspace.shared.notificationCenter
         for token in workspaceObserverTokens { center.removeObserver(token) }
@@ -491,12 +518,45 @@ final class AppModel: ObservableObject {
 
     private func refreshCodexDesktopPresence() {
         let supportedBundleIDs: Set<String> = ["com.openai.codex", "com.openai.chat"]
-        let running = NSWorkspace.shared.runningApplications.contains { application in
+        let applications = NSWorkspace.shared.runningApplications.filter { application in
             application.bundleIdentifier.map(supportedBundleIDs.contains) ?? false
         }
+        let running = !applications.isEmpty
         codexDesktopRunning = running
+        codexDesktopLaunchDate = applications.compactMap(\.launchDate).max()
+        if !running {
+            codexDesktopActiveSessionIDs = []
+        }
         Task {
             await coordinator.setCodexDesktopRunning(running)
+            if !running { await coordinator.setCodexDesktopActiveCount(0) }
+            await refreshPublishedState()
+        }
+    }
+
+    private func refreshCodexDesktopActivity() async {
+        guard codexDesktopRunning else {
+            if !codexDesktopActiveSessionIDs.isEmpty {
+                codexDesktopActiveSessionIDs = []
+                await coordinator.setCodexDesktopActiveCount(0)
+                await refreshPublishedState()
+            }
+            return
+        }
+
+        let scanner = desktopRolloutScanner
+        let launchDate = codexDesktopLaunchDate
+        let sessionsRoot = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/sessions", isDirectory: true)
+        let sessions = await Task.detached(priority: .utility) {
+            scanner.activeSessions(in: sessionsRoot, desktopLaunchDate: launchDate)
+        }.value
+        guard !Task.isCancelled else { return }
+
+        let ids = Set(sessions.map(\.id))
+        if ids != codexDesktopActiveSessionIDs {
+            codexDesktopActiveSessionIDs = ids
+            await coordinator.setCodexDesktopActiveCount(ids.count)
             await refreshPublishedState()
         }
     }

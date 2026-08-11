@@ -2,13 +2,13 @@
 
 ## Runtime data flow
 
-`AppModel` is the main-actor UI boundary. It locates the Codex binary, asks `AppServerSupervisor` to launch one owned child, and runs an observer connection through `AppServerClient`. It also observes `NSWorkspace` launch/termination notifications and checks the `com.openai.codex` bundle identifier for the separate Codex Desktop presence signal.
+`AppModel` is the main-actor UI boundary. It locates the Codex binary, asks `AppServerSupervisor` to launch one owned child, and runs an observer connection through `AppServerClient`. It observes `NSWorkspace` launch/termination notifications for Codex Desktop presence and polls `CodexDesktopRolloutScanner` once per second for active top-level Desktop task lifecycles.
 
 `UnixWebSocketTransport` implements RFC 6455 client framing and the HTTP Upgrade handshake directly over `AF_UNIX`. It validates `Sec-WebSocket-Accept`, masks client frames, handles ping/pong/close, limits payloads to 16 MiB, and exposes no TCP listener.
 
 `AppServerClient` performs `initialize` then `initialized`, allocates monotonically increasing request IDs, matches responses to continuations, times out pending calls, converts relevant notifications into typed events, routes command/file approval requests to the cockpit, rejects server requests it cannot serve, and survives malformed JSON.
 
-The cockpit starts a conversation with `thread/start` using the protocol value `workspace-write`, sends user input with `turn/start`, renders `item/agentMessage/delta`, treats the final `item/completed` agent message as authoritative, interrupts with `turn/interrupt`, and answers command/file approval requests. Each turn uses the selected folder as its only explicit writable root. Enter submits, Shift-Enter inserts a newline, and rejected preconditions leave the draft intact while adding a visible system explanation.
+The cockpit starts a conversation with `thread/start` using the installed runtime's protocol values `workspace-write` and `on-request`, sends user input with `turn/start`, renders `item/agentMessage/delta`, treats the final `item/completed` agent message as authoritative, interrupts with `turn/interrupt`, and answers command/file approval requests. Each turn uses the selected folder as its only explicit writable root. Enter submits, Shift-Enter inserts a newline, and rejected preconditions leave the draft intact while adding a visible system explanation.
 
 `ThreadActivityTracker` is an actor and owns:
 
@@ -19,7 +19,9 @@ The cockpit starts a conversation with `thread/start` using the protocol value `
 
 Lifecycle events provide low latency. Chat-only item events do not mutate activity certainty or sleep state. Connection/reconnection/startup and a 10-second timer call `thread/loaded/list`, then `thread/read` for each loaded ID. Reconciliation replaces the active set from runtime `thread.status`; turn contents are never requested by the sleep tracker.
 
-`AwakeCoordinator` combines two inputs: exact managed-task activity from `ThreadActivityTracker`, and boolean Codex Desktop process presence from `AppModel`. The latter is deliberately not converted into a fake task count. The production `PowerAssertionManager` owns zero or one `IOPMAssertionID` of type `PreventUserIdleSystemSleep`. A one-second idle debounce avoids churn. Unknown managed connection state uses a 30-second grace limit. Confirmed server termination clears the managed input but retains protection when enabled desktop presence still requires it; application termination always releases.
+`CodexDesktopRolloutScanner` enumerates local JSONL rollouts, decodes only the first `session_meta` record, accepts only root records with `source = vscode` and `originator = Codex Desktop`, and searches backwards in bounded chunks for the latest exact `task_started` or `task_complete` marker. It does not parse message contents. Markers older than the current Desktop app launch are ignored so a crash cannot create permanent false activity.
+
+`AwakeCoordinator` combines three inputs: exact managed-task activity from `ThreadActivityTracker`, detected active Codex Desktop sessions, and optional full-time Codex Desktop process presence. The production `PowerAssertionManager` owns zero or one `IOPMAssertionID` of type `PreventUserIdleSystemSleep`. A one-second idle debounce avoids churn. Unknown managed connection state uses a 30-second grace limit. Confirmed server termination clears the managed input but retains protection when Desktop task activity or enabled presence still requires it; application termination always releases.
 
 ## Supervisor state machine
 

@@ -64,10 +64,10 @@ struct CockpitView: View {
                     accent: model.codexDesktopRunning ? CockpitPalette.ice : CockpitPalette.muted
                 )
                 InstrumentCard(
-                    label: "ACTIVE TASKS",
-                    value: "\(model.activity.activeCount)",
+                    label: "ACTIVE SESSIONS",
+                    value: "\(model.totalActiveSessionCount)",
                     icon: "waveform.path.ecg",
-                    accent: model.activity.activeCount > 0 ? CockpitPalette.ice : CockpitPalette.muted
+                    accent: model.totalActiveSessionCount > 0 ? CockpitPalette.ice : CockpitPalette.muted
                 )
             }
 
@@ -196,19 +196,19 @@ struct CockpitView: View {
     private var activeTasks: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("MANAGED ACTIVE TASKS")
+                Text("ACTIVE CODEX SESSIONS")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .tracking(1.4)
                     .foregroundStyle(CockpitPalette.muted)
                 Spacer()
                 Circle()
-                    .fill(model.activity.activeCount > 0 ? CockpitPalette.ice : CockpitPalette.muted.opacity(0.45))
+                    .fill(model.totalActiveSessionCount > 0 ? CockpitPalette.ice : CockpitPalette.muted.opacity(0.45))
                     .frame(width: 6, height: 6)
-                    .shadow(color: CockpitPalette.ice, radius: model.activity.activeCount > 0 ? 5 : 0)
+                    .shadow(color: CockpitPalette.ice, radius: model.totalActiveSessionCount > 0 ? 5 : 0)
             }
 
-            if model.activity.activeThreadIds.isEmpty {
-                Text("No active managed task")
+            if model.totalActiveSessionCount == 0 {
+                Text("No active Codex session")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(CockpitPalette.silver.opacity(0.72))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -217,21 +217,21 @@ struct CockpitView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 7) {
+                        ForEach(model.codexDesktopActiveSessionIDs.sorted(), id: \.self) { id in
+                            ActiveSessionRow(
+                                title: "Codex Desktop task",
+                                id: abbreviated(id),
+                                icon: "macwindow",
+                                accent: CockpitPalette.ice
+                            )
+                        }
                         ForEach(model.activity.activeThreadIds.sorted(), id: \.self) { id in
-                            HStack(spacing: 9) {
-                                Image(systemName: "waveform")
-                                    .foregroundStyle(CockpitPalette.ice)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(id == model.chatThreadID ? "Cockpit task" : "Remote Codex task")
-                                        .font(.system(size: 11, weight: .semibold))
-                                    Text(abbreviated(id))
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .foregroundStyle(CockpitPalette.muted)
-                                }
-                                Spacer()
-                            }
-                            .padding(10)
-                            .background(CockpitPalette.ice.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                            ActiveSessionRow(
+                                title: id == model.chatThreadID ? "Cockpit task" : "Managed Codex task",
+                                id: abbreviated(id),
+                                icon: "waveform",
+                                accent: CockpitPalette.ice
+                            )
                         }
                     }
                 }
@@ -454,15 +454,22 @@ struct CockpitView: View {
 
     private var codexDesktopPresenceDescription: String {
         if model.codexDesktopRunning {
+            if !model.codexDesktopActiveSessionIDs.isEmpty {
+                let count = model.codexDesktopActiveSessionIDs.count
+                return "\(count) active Desktop \(count == 1 ? "session" : "sessions") detected from private lifecycle markers. Prompt and response text is not read."
+            }
             return model.keepAwakeForCodexDesktop
-                ? "Codex is running. With the main power ON, its presence keeps this Mac awake. Individual external task details remain private."
-                : "Codex is running, but presence-based sleep protection is disabled. Individual external task details remain private."
+                ? "Codex is running with no active task detected. With the main power ON, its presence still keeps this Mac awake."
+                : "Codex is running with no active task detected. Presence-based sleep protection is disabled."
         }
         return "Codex is not running. Launch ChatGPT/Codex to enable presence-based sleep protection."
     }
 
     private var powerSubtitle: String {
         guard model.autoKeepAwake else { return "automatic sleep protection disabled" }
+        if model.assertionHeld, !model.codexDesktopActiveSessionIDs.isEmpty {
+            return "active Codex Desktop session · protection engaged"
+        }
         if model.assertionHeld, model.codexDesktopRunning, model.keepAwakeForCodexDesktop {
             return "Codex Desktop detected · protection engaged"
         }
@@ -502,6 +509,30 @@ struct CockpitView: View {
     private func abbreviated(_ value: String) -> String {
         guard value.count > 14 else { return value }
         return "\(value.prefix(8))…\(value.suffix(4))"
+    }
+}
+
+private struct ActiveSessionRow: View {
+    let title: String
+    let id: String
+    let icon: String
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: icon)
+                .foregroundStyle(accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(id)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(CockpitPalette.muted)
+            }
+            Spacer()
+        }
+        .padding(10)
+        .background(accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 

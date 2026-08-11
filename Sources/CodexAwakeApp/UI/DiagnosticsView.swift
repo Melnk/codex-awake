@@ -22,7 +22,7 @@ struct DiagnosticsView: View {
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                 Button("Choose Codex Binary…") { model.chooseCodexBinary() }
                 Spacer()
-                Text("Managed tasks and Codex Desktop presence are tracked separately.")
+                Text("Managed events and privacy-safe Desktop lifecycle markers are tracked separately.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

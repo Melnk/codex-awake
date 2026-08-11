@@ -2,12 +2,13 @@ import Combine
 import Foundation
 
 public struct DiagnosticsSnapshot: Equatable, Sendable {
-    public var appVersion = "1.2.0 (3)"
+    public var appVersion = "1.2.1 (4)"
     public var macOSVersion = ProcessInfo.processInfo.operatingSystemVersionString
     public var architecture = "unknown"
     public var codexPath: String?
     public var codexVersion: String?
     public var codexDesktopRunning = false
+    public var codexDesktopActiveSessionIDs: Set<String> = []
     public var keepAwakeForCodexDesktop = true
     public var transport = "Unix domain socket (WebSocket upgrade)"
     public var endpoint: String?
@@ -25,6 +26,7 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
 
     public var sanitizedText: String {
         let formatter = ISO8601DateFormatter()
+        let desktopSessions = codexDesktopActiveSessionIDs.sorted().map(SafeDisplay.abbreviated).joined(separator: ", ")
         let threads = activity.activeThreadIds.sorted().map(SafeDisplay.abbreviated).joined(separator: ", ")
         let turns = activity.activeTurnKeys.sorted {
             ($0.threadId, $0.turnId) < ($1.threadId, $1.turnId)
@@ -37,6 +39,8 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
         Codex path: \(codexPath ?? "not found")
         Codex version: \(codexVersion ?? "unknown")
         Codex desktop app: \(codexDesktopRunning ? "running" : "not running")
+        Active Codex desktop sessions: \(codexDesktopActiveSessionIDs.count)
+        Active desktop session IDs: \(desktopSessions.isEmpty ? "none" : desktopSessions)
         Keep awake for Codex desktop: \(keepAwakeForCodexDesktop ? "enabled" : "disabled")
         Transport: \(transport)
         Endpoint: \(endpoint ?? "unavailable")
@@ -54,7 +58,7 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
         Reconnects: \(reconnectCount)
         Last safe error: \(lastSafeError ?? "none")
 
-        Scope: managed tasks are tracked individually. Codex desktop process presence is tracked separately; its independent task contents and statuses remain private. Independent CLI, cloud, other-user, and remote-host sessions are not tracked.
+        Scope: managed tasks use App Server events. Codex Desktop activity uses only local rollout identity and task_started/task_complete markers; prompt and response text is never read. Independent CLI, cloud, other-user, and remote-host sessions are not tracked.
         Closed lid: CodexAwake prevents idle system sleep; it does not bypass macOS lid-close sleep policy.
         """
     }

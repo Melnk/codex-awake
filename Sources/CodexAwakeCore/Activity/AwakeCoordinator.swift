@@ -11,6 +11,7 @@ public actor AwakeCoordinator {
     private var autoKeepAwake: Bool
     private var keepAwakeForCodexDesktop: Bool
     private var codexDesktopRunning = false
+    private var codexDesktopActiveCount = 0
     private var latestSnapshot = ActivitySnapshot()
     private var pendingRelease: Task<Void, Never>?
 
@@ -40,6 +41,11 @@ public actor AwakeCoordinator {
         await evaluate()
     }
 
+    public func setCodexDesktopActiveCount(_ count: Int) async {
+        codexDesktopActiveCount = max(0, count)
+        await evaluate()
+    }
+
     public func setKeepAwakeForCodexDesktop(_ enabled: Bool) async {
         keepAwakeForCodexDesktop = enabled
         await evaluate()
@@ -54,7 +60,7 @@ public actor AwakeCoordinator {
             return
         }
 
-        if keepAwakeForCodexDesktop, codexDesktopRunning {
+        if codexDesktopActiveCount > 0 || (keepAwakeForCodexDesktop && codexDesktopRunning) {
             await acquireAssertion()
             return
         }
@@ -94,7 +100,8 @@ public actor AwakeCoordinator {
         pendingRelease?.cancel()
         pendingRelease = nil
         latestSnapshot = ActivitySnapshot()
-        if autoKeepAwake, keepAwakeForCodexDesktop, codexDesktopRunning {
+        if autoKeepAwake,
+           codexDesktopActiveCount > 0 || (keepAwakeForCodexDesktop && codexDesktopRunning) {
             await acquireAssertion()
         } else {
             await power.release()

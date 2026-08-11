@@ -60,7 +60,7 @@ public actor AppServerClient {
                     "clientInfo": .object([
                         "name": .string("codex_awake"),
                         "title": .string("CodexAwake"),
-                        "version": .string("1.2.0")
+                        "version": .string("1.2.1")
                     ])
                 ])
             )
@@ -101,7 +101,7 @@ public actor AppServerClient {
             method: "thread/start",
             params: .object([
                 "cwd": .string(cwd),
-                "approvalPolicy": .string("unlessTrusted"),
+                "approvalPolicy": .string("on-request"),
                 "sandbox": .string("workspace-write"),
                 "serviceName": .string("codex_awake")
             ])
@@ -124,7 +124,7 @@ public actor AppServerClient {
                     ])
                 ]),
                 "cwd": .string(cwd),
-                "approvalPolicy": .string("unlessTrusted"),
+                "approvalPolicy": .string("on-request"),
                 "sandboxPolicy": .object([
                     "type": .string("workspaceWrite"),
                     "writableRoots": .array([.string(cwd)]),

@@ -10,7 +10,7 @@ struct MenuContentView: View {
         Text("App Server: \(model.appServerState.rawValue.capitalized)")
         Text("Codex: \(model.codexVersion ?? "Not found")")
         Text("Codex Desktop: \(model.codexDesktopRunning ? "Running" : "Not Running")")
-        Text("Active threads: \(model.activity.activeCount)")
+        Text("Active sessions: \(model.totalActiveSessionCount)")
         Text("Keep Awake: \(model.assertionHeld ? "ON" : "OFF")")
 
         if model.activity.certainty == .unknownReconnecting {
@@ -20,23 +20,26 @@ struct MenuContentView: View {
         if !model.firstRunAcknowledged {
             Divider()
             Text("Tracks cockpit tasks and Codex CLI/TUI sessions connected to this app's managed App Server.")
-            Text("Detects whether Codex Desktop is running, without reading its independent chats.")
+            Text("Tracks Codex Desktop task lifecycle without reading prompt or response text.")
             Text("It prevents idle sleep; it does not bypass lid-close sleep.")
             Button("I Understand") { model.acknowledgeFirstRun() }
                 .accessibilityLabel("Acknowledge CodexAwake tracking scope")
         }
 
-        if !model.activity.activeThreadIds.isEmpty {
+        if model.totalActiveSessionCount > 0 {
             Divider()
             Text("Active sessions")
+            ForEach(model.codexDesktopActiveSessionIDs.sorted(), id: \.self) { id in
+                Text("• Desktop \(abbreviated(id))")
+            }
             ForEach(model.activity.activeThreadIds.sorted(), id: \.self) { id in
-                Text("• Thread \(abbreviated(id))")
+                Text("• Managed \(abbreviated(id))")
             }
         }
 
         Divider()
-        Text("Managed CodexAwake tasks are tracked")
-        Text("Codex Desktop presence is tracked; its tasks stay private")
+        Text("Managed and Codex Desktop task lifecycles are tracked")
+        Text("Prompt and response text stays private")
         Text("Prevents idle sleep only; lid-close policy still applies")
         Button("Open Cockpit…") { openWindow(id: "cockpit") }
             .keyboardShortcut("k")

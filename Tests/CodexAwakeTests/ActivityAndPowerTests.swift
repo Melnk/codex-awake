@@ -226,6 +226,15 @@ final class ActivityAndPowerTests: XCTestCase {
         XCTAssertFalse(held)
     }
 
+    func testActiveDesktopSessionAcquiresWhenPresenceProtectionIsDisabled() async {
+        let power = MockPowerAssertionController()
+        let coordinator = AwakeCoordinator(power: power, keepAwakeForCodexDesktop: false)
+        await coordinator.setCodexDesktopRunning(true)
+        await coordinator.setCodexDesktopActiveCount(1)
+        let held = await power.assertionIsHeld()
+        XCTAssertTrue(held)
+    }
+
     func testAutoKeepAwakeOffOverridesCodexDesktopPresence() async {
         let power = MockPowerAssertionController()
         let coordinator = AwakeCoordinator(power: power)
