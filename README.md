@@ -98,7 +98,7 @@ CONFIGURATION=debug scripts/build_app.sh
 
 ## First launch
 
-CodexAwake has no Dock icon (`LSUIElement=true`). Look for the bolt icon in the menu bar and choose **Open Cockpit…**. On first launch the menu shows these facts:
+CodexAwake has no Dock icon (`LSUIElement=true`). The cockpit opens automatically at launch; after closing it, reopen it from the bolt menu with **Open Cockpit…** or launch the `.app` again. On first launch the menu shows these facts:
 
 1. cockpit tasks and sessions connected to its managed `--remote` endpoint are tracked;
 2. independent ChatGPT Desktop chats are not visible to third-party monitoring;

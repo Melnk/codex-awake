@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    static let codexAwakeOpenCockpit = Notification.Name("com.melnikoleg.CodexAwake.openCockpit")
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
     private var terminationPending = false
@@ -17,6 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        NotificationCenter.default.post(name: .codexAwakeOpenCockpit, object: nil)
+        return true
     }
 }
 
@@ -36,8 +45,10 @@ struct CodexAwakeApp: App {
             MenuContentView()
                 .environmentObject(model)
         } label: {
-            Image(systemName: menuBarSymbol)
-                .accessibilityLabel("CodexAwake, \(model.activity.activeCount) active managed Codex threads")
+            CockpitLaunchingMenuBarLabel(
+                symbol: menuBarSymbol,
+                activeCount: model.activity.activeCount
+            )
         }
         .menuBarExtraStyle(.menu)
 
@@ -63,4 +74,35 @@ struct CodexAwakeApp: App {
         return "bolt.circle"
     }
 
+}
+
+private struct CockpitLaunchingMenuBarLabel: View {
+    @Environment(\.openWindow) private var openWindow
+    @State private var didRequestInitialWindow = false
+
+    let symbol: String
+    let activeCount: Int
+
+    var body: some View {
+        Image(systemName: symbol)
+            .accessibilityLabel("CodexAwake, \(activeCount) active managed Codex threads")
+            .task {
+                guard !didRequestInitialWindow else { return }
+                didRequestInitialWindow = true
+                await presentCockpit()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .codexAwakeOpenCockpit)) { _ in
+                Task { await presentCockpit() }
+            }
+    }
+
+    @MainActor
+    private func presentCockpit() async {
+        openWindow(id: "cockpit")
+        try? await Task.sleep(for: .milliseconds(120))
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        NSApplication.shared.windows
+            .first(where: { $0.title == "CodexAwake Cockpit" })?
+            .makeKeyAndOrderFront(nil)
+    }
 }
