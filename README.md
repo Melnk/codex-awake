@@ -7,6 +7,94 @@ It uses the official App Server protocol for managed-task state. For independent
 > [!IMPORTANT]
 > CodexAwake tracks its own cockpit tasks and Codex CLI/TUI sessions connected with `--remote` to the App Server launched by CodexAwake. It separately detects active root tasks created by Codex Desktop from lifecycle markers in `~/.codex/sessions`; those sessions are identified as Desktop tasks but their prompts, responses, reasoning, and tool output are not read. Ordinary unmanaged CLI sessions, Codex Cloud, another user's processes, and remote hosts remain out of scope unless they connect to the managed server.
 
+## Install and run / Установка и запуск
+
+### English
+
+You need:
+
+- macOS 14 or newer;
+- Xcode installed and opened at least once;
+- access to this private GitHub repository;
+- ChatGPT/Codex Desktop signed in, or a compatible standalone Codex CLI.
+
+1. Open Terminal and run:
+
+   ```bash
+   git clone https://github.com/Melnk/codex-awake.git
+   cd codex-awake
+   scripts/build_app.sh
+   ```
+
+2. Start CodexAwake:
+
+   ```bash
+   open dist/CodexAwake.app
+   ```
+
+3. The dashboard opens automatically. If you close it, click the **bolt icon** in the macOS menu bar and select **Open Cockpit…**. CodexAwake intentionally has no Dock icon.
+
+4. Choose a project folder in **Chat with Codex**. The main protection switch is enabled by default and starts protecting the Mac when Codex is open or a tracked task is active.
+
+5. Optional: to keep the Mac running with the lid closed, enable **Closed-lid mode**, click **Enable closed-lid mode**, and approve the one-time administrator prompt. Close the lid only after the status says **Active — you can close the lid**.
+
+To keep the app in Applications, open the build folder and drag **CodexAwake.app** into **Applications**:
+
+```bash
+open dist
+```
+
+Then start it with Finder or:
+
+```bash
+open /Applications/CodexAwake.app
+```
+
+If macOS blocks the first launch, right-click **CodexAwake.app**, choose **Open**, and confirm **Open** again.
+
+### Русский
+
+Что потребуется:
+
+- macOS 14 или новее;
+- установленный Xcode, который был запущен хотя бы один раз;
+- доступ к этому приватному GitHub-репозиторию;
+- выполненный вход в ChatGPT/Codex Desktop или совместимый отдельный Codex CLI.
+
+1. Откройте Терминал и выполните:
+
+   ```bash
+   git clone https://github.com/Melnk/codex-awake.git
+   cd codex-awake
+   scripts/build_app.sh
+   ```
+
+2. Запустите CodexAwake:
+
+   ```bash
+   open dist/CodexAwake.app
+   ```
+
+3. Главное окно откроется автоматически. Если вы его закрыли, нажмите на **иконку молнии** в строке меню macOS и выберите **Open Cockpit…**. Иконки в Dock у CodexAwake специально нет.
+
+4. В блоке **Chat with Codex** выберите папку проекта. Основная защита включена по умолчанию и не даёт Mac уснуть, когда открыт Codex или выполняется отслеживаемая задача.
+
+5. Необязательно: чтобы Mac продолжал работать с закрытой крышкой, включите **Closed-lid mode**, нажмите **Enable closed-lid mode** и один раз подтвердите запрос администратора. Закрывайте крышку только после появления статуса **Active — you can close the lid**.
+
+Чтобы перенести приложение в «Программы», откройте папку сборки и перетащите **CodexAwake.app** в **Applications**:
+
+```bash
+open dist
+```
+
+После этого запускайте его через Finder или командой:
+
+```bash
+open /Applications/CodexAwake.app
+```
+
+Если macOS блокирует первый запуск, нажмите на **CodexAwake.app** правой кнопкой мыши, выберите **Открыть**, а затем ещё раз подтвердите запуск.
+
 ## Cockpit
 
 Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a clean violet visual language with a saved **Light / Dark** appearance switch. It includes:
@@ -68,14 +156,13 @@ The first-run menu, cockpit, and Diagnostics window repeat this boundary. Deskto
 
 No third-party packages are used. The application uses SwiftUI, Foundation, Swift Concurrency, OSLog, ServiceManagement, AppKit, CryptoKit, Darwin Unix sockets, XPC, and IOKit.
 
-## Build and install
+## Build details
+
+The bilingual quick start above is the recommended installation path. From an existing repository checkout, run the full test suite and create a release bundle with:
 
 ```bash
-git clone <private-repository-url>
-cd codex-awake
 scripts/test.sh
 scripts/build_app.sh
-open dist/CodexAwake.app
 ```
 
 The release build is assembled as `dist/CodexAwake.app` and ad-hoc signed for local development. It includes the separately signed Closed-Lid helper plus narrow install/uninstall scripts. Copy it to `/Applications` if desired. A paid Apple Developer account is not required for local use, but installing the helper requires one administrator approval.
