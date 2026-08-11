@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 public struct DiagnosticsSnapshot: Equatable, Sendable {
-    public var appVersion = "1.3.0 (5)"
+    public var appVersion = "1.4.0 (6)"
     public var macOSVersion = ProcessInfo.processInfo.operatingSystemVersionString
     public var architecture = "unknown"
     public var codexPath: String?

@@ -44,6 +44,7 @@ struct CodexAwakeApp: App {
         MenuBarExtra {
             MenuContentView()
                 .environmentObject(model)
+                .preferredColorScheme(model.interfaceTheme.colorScheme)
         } label: {
             CockpitLaunchingMenuBarLabel(
                 symbol: menuBarSymbol,
@@ -55,6 +56,7 @@ struct CodexAwakeApp: App {
         Window("CodexAwake Cockpit", id: "cockpit") {
             CockpitView()
                 .environmentObject(model)
+                .preferredColorScheme(model.interfaceTheme.colorScheme)
         }
         .defaultSize(width: 1080, height: 720)
         .windowStyle(.hiddenTitleBar)
@@ -63,6 +65,7 @@ struct CodexAwakeApp: App {
         Window("CodexAwake Diagnostics", id: "diagnostics") {
             DiagnosticsView()
                 .environmentObject(model)
+                .preferredColorScheme(model.interfaceTheme.colorScheme)
         }
         .defaultSize(width: 620, height: 520)
         .windowResizability(.contentMinSize)

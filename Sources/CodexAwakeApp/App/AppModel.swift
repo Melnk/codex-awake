@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     @Published var chatTurnID: String?
     @Published var chatIsSending = false
     @Published var approvalRequests: [CodexApprovalRequest] = []
+    @Published var interfaceTheme: InterfaceTheme
 
     let diagnostics = DiagnosticsStore()
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "App")
@@ -60,6 +61,9 @@ final class AppModel: ObservableObject {
         let auto = defaults.object(forKey: "AutoKeepAwake") as? Bool ?? true
         let keepForDesktop = defaults.object(forKey: "KeepAwakeForCodexDesktop") as? Bool ?? true
         let closedLid = defaults.bool(forKey: "ClosedLidProtectionEnabled")
+        interfaceTheme = InterfaceTheme(
+            rawValue: defaults.string(forKey: "InterfaceTheme") ?? ""
+        ) ?? .light
         autoKeepAwake = auto
         keepAwakeForCodexDesktop = keepForDesktop
         closedLidProtectionEnabled = closedLid
@@ -140,6 +144,11 @@ final class AppModel: ObservableObject {
             await coordinator.setAutoKeepAwake(enabled)
             await refreshPublishedState()
         }
+    }
+
+    func setInterfaceTheme(_ theme: InterfaceTheme) {
+        interfaceTheme = theme
+        UserDefaults.standard.set(theme.rawValue, forKey: "InterfaceTheme")
     }
 
     func setKeepAwakeForCodexDesktop(_ enabled: Bool) {
@@ -512,7 +521,7 @@ final class AppModel: ObservableObject {
 
     private func updateDiagnostics() {
         var value = DiagnosticsSnapshot()
-        value.appVersion = "1.3.0 (5)"
+        value.appVersion = "1.4.0 (6)"
         value.architecture = Self.architecture
         value.codexPath = codexPath
         value.codexVersion = codexVersion

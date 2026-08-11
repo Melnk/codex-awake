@@ -1,13 +1,16 @@
 import SwiftUI
 
 private enum CockpitPalette {
-    static let canvas = Color(red: 0.025, green: 0.03, blue: 0.035)
-    static let panel = Color(red: 0.055, green: 0.065, blue: 0.072)
-    static let panelRaised = Color(red: 0.075, green: 0.087, blue: 0.096)
-    static let silver = Color(red: 0.77, green: 0.81, blue: 0.84)
-    static let muted = Color(red: 0.50, green: 0.55, blue: 0.59)
-    static let ice = Color(red: 0.36, green: 0.90, blue: 0.96)
-    static let iceDeep = Color(red: 0.04, green: 0.48, blue: 0.60)
+    static let canvas = Color(nsColor: .windowBackgroundColor)
+    static let panel = Color(nsColor: .controlBackgroundColor)
+    static let panelRaised = Color(nsColor: .textBackgroundColor)
+    static let silver = Color(nsColor: .labelColor)
+    static let muted = Color(nsColor: .secondaryLabelColor)
+    static let separator = Color(nsColor: .separatorColor)
+    static let ice = Color(red: 0.43, green: 0.22, blue: 0.98)
+    static let iceDeep = Color(red: 0.28, green: 0.10, blue: 0.76)
+    static let violetSoft = Color(red: 0.70, green: 0.42, blue: 1.0)
+    static let blueSoft = Color(red: 0.28, green: 0.56, blue: 1.0)
     static let amber = Color(red: 0.96, green: 0.66, blue: 0.22)
     static let danger = Color(red: 0.95, green: 0.30, blue: 0.31)
 }
@@ -22,24 +25,17 @@ struct CockpitView: View {
         ZStack {
             CockpitBackground()
 
-            HStack(spacing: 0) {
-                controlDeck
-                    .frame(width: 314)
+            VStack(spacing: 0) {
+                topBar
 
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.clear, CockpitPalette.silver.opacity(0.28), .clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: 1)
-                    .padding(.vertical, 22)
-
-                chatDeck
+                HStack(spacing: 20) {
+                    controlDeck
+                        .frame(width: 320)
+                    chatDeck
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
-            .padding(18)
 
             if let approval = model.approvalRequests.first {
                 ApprovalOverlay(request: approval)
@@ -47,14 +43,68 @@ struct CockpitView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
-        .frame(minWidth: 980, minHeight: 650)
-        .preferredColorScheme(.dark)
+        .frame(minWidth: 1040, minHeight: 700)
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [CockpitPalette.violetSoft, CockpitPalette.iceDeep],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 44, height: 44)
+            .shadow(color: CockpitPalette.ice.opacity(0.24), radius: 14, y: 7)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("CodexAwake")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                Text("Keep your Codex work running")
+                    .font(.system(size: 11))
+                    .foregroundStyle(CockpitPalette.muted)
+            }
+
+            StatusPill(
+                text: model.appServerState == .running ? "CODEX READY" : "CONNECTING",
+                color: serverAccent
+            )
+            .padding(.leading, 8)
+
+            Spacer()
+
+            Label(
+                "\(model.totalActiveSessionCount) active",
+                systemImage: model.totalActiveSessionCount > 0 ? "waveform.path.ecg" : "waveform"
+            )
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(CockpitPalette.muted)
+
+            ThemeSwitcher(selection: Binding(
+                get: { model.interfaceTheme },
+                set: { model.setInterfaceTheme($0) }
+            ))
+        }
+        .padding(.horizontal, 26)
+        .padding(.vertical, 18)
+        .background(CockpitPalette.panelRaised.opacity(0.72))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(CockpitPalette.separator.opacity(0.65))
+                .frame(height: 1)
+        }
     }
 
     private var controlDeck: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                brandHeader
                 powerControl
 
                 HStack(spacing: 10) {
@@ -74,14 +124,29 @@ struct CockpitView: View {
 
                 activeTasks
                 externalChatGPTNotice
-                Toggle("Keep awake while Codex App is running", isOn: Binding(
-                    get: { model.keepAwakeForCodexDesktop },
-                    set: { model.setKeepAwakeForCodexDesktop($0) }
-                ))
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(CockpitPalette.silver)
+                HStack(spacing: 11) {
+                    Image(systemName: "macwindow.and.cursorarrow")
+                        .foregroundStyle(CockpitPalette.ice)
+                        .frame(width: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("While Codex is open")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Keep this Mac awake even between tasks")
+                            .font(.system(size: 9))
+                            .foregroundStyle(CockpitPalette.muted)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { model.keepAwakeForCodexDesktop },
+                        set: { model.setKeepAwakeForCodexDesktop($0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                }
+                .padding(13)
+                .background(CockpitPalette.panelRaised.opacity(0.72), in: RoundedRectangle(cornerRadius: 15))
+                .overlay(RoundedRectangle(cornerRadius: 15).stroke(CockpitPalette.separator.opacity(0.58)))
 
                 closedLidControl
 
@@ -93,114 +158,77 @@ struct CockpitView: View {
                         .disabled(model.appServerState == .starting || model.appServerState == .stopping)
                 }
             }
-            .padding(18)
+            .padding(.vertical, 2)
         }
-        .background(CockpitPanel(cornerRadius: 26))
-        .padding(.trailing, 18)
         .scrollIndicators(.hidden)
     }
 
-    private var brandHeader: some View {
-        HStack(spacing: 13) {
-            ZStack {
-                Circle()
-                    .stroke(
-                        AngularGradient(
-                            colors: [CockpitPalette.silver, .white, CockpitPalette.muted, CockpitPalette.silver],
-                            center: .center
-                        ),
-                        lineWidth: 1.5
-                    )
-                Circle()
-                    .stroke(CockpitPalette.silver.opacity(0.2), lineWidth: 6)
-                    .padding(5)
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 17, weight: .light))
-                    .foregroundStyle(CockpitPalette.ice)
-            }
-            .frame(width: 44, height: 44)
-            .shadow(color: CockpitPalette.ice.opacity(0.22), radius: 10)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("CODEX AWAKE")
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .tracking(2.2)
-                    .foregroundStyle(.white.opacity(0.96))
-                Text("GRAND TOURING INTERFACE")
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .tracking(1.5)
-                    .foregroundStyle(CockpitPalette.muted)
-            }
-        }
-    }
-
     private var powerControl: some View {
-        VStack(spacing: 12) {
-            Button {
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
-                    model.setAutoKeepAwake(!model.autoKeepAwake)
-                }
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    (model.autoKeepAwake ? CockpitPalette.iceDeep : Color.black).opacity(0.40),
-                                    CockpitPalette.panel,
-                                    Color.black.opacity(0.96)
-                                ],
-                                center: .center,
-                                startRadius: 3,
-                                endRadius: 72
-                            )
-                        )
-                    Circle()
-                        .stroke(
-                            AngularGradient(
-                                colors: [CockpitPalette.muted, .white, CockpitPalette.muted.opacity(0.3), CockpitPalette.silver],
-                                center: .center
-                            ),
-                            lineWidth: 2
-                        )
-                    Circle()
-                        .trim(from: 0.07, to: 0.93)
-                        .stroke(
-                            model.autoKeepAwake ? CockpitPalette.ice : CockpitPalette.muted.opacity(0.34),
-                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(90))
-                        .padding(9)
-                    Image(systemName: "power")
-                        .font(.system(size: 38, weight: .ultraLight))
-                        .foregroundStyle(model.autoKeepAwake ? Color.white : CockpitPalette.muted)
-                        .shadow(color: model.autoKeepAwake ? CockpitPalette.ice : .clear, radius: 12)
-                }
-                .frame(width: 130, height: 130)
-                .shadow(color: model.autoKeepAwake ? CockpitPalette.ice.opacity(0.28) : .black.opacity(0.55), radius: 22)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Automatic keep awake")
-            .accessibilityValue(model.autoKeepAwake ? "On" : "Off")
+        ZStack(alignment: .bottomTrailing) {
+            LinearGradient(
+                colors: model.autoKeepAwake
+                    ? [CockpitPalette.iceDeep, CockpitPalette.ice, CockpitPalette.blueSoft]
+                    : [Color.gray.opacity(0.72), Color.gray.opacity(0.45)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
-            VStack(spacing: 4) {
-                Text(model.autoKeepAwake ? "ON" : "OFF")
-                    .font(.system(size: 22, weight: .light, design: .rounded))
-                    .tracking(6)
-                    .foregroundStyle(model.autoKeepAwake ? CockpitPalette.ice : CockpitPalette.muted)
+            AmbientBlob()
+                .frame(width: 150, height: 130)
+                .offset(x: 34, y: 30)
+                .opacity(model.autoKeepAwake ? 0.82 : 0.25)
+
+            VStack(alignment: .leading, spacing: 13) {
+                HStack {
+                    Label("Sleep protection", systemImage: "sparkles")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.88))
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { model.autoKeepAwake },
+                        set: { model.setAutoKeepAwake($0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .tint(.white.opacity(0.88))
+                }
+
+                Text(model.autoKeepAwake ? "Your Mac stays awake" : "Protection is paused")
+                    .font(.system(size: 24, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 Text(powerSubtitle)
-                    .font(.caption)
-                    .foregroundStyle(CockpitPalette.muted)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.78))
+                    .frame(maxWidth: 225, alignment: .leading)
+
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 7, height: 7)
+                    Text(model.autoKeepAwake ? "ON" : "OFF")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .tracking(1.4)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .background(.white.opacity(0.16), in: Capsule())
             }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
+        .frame(minHeight: 210)
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .shadow(color: CockpitPalette.ice.opacity(0.18), radius: 22, y: 12)
     }
 
     private var activeTasks: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("ACTIVE CODEX SESSIONS")
+                Text("ACTIVE SESSIONS")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .tracking(1.4)
                     .foregroundStyle(CockpitPalette.muted)
@@ -212,12 +240,13 @@ struct CockpitView: View {
             }
 
             if model.totalActiveSessionCount == 0 {
-                Text("No active Codex session")
+                Label("No active Codex sessions", systemImage: "checkmark.circle")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(CockpitPalette.silver.opacity(0.72))
+                    .foregroundStyle(CockpitPalette.muted)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
-                    .background(Color.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 11))
+                    .background(CockpitPalette.panelRaised.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
+                    .overlay(RoundedRectangle(cornerRadius: 13).stroke(CockpitPalette.separator.opacity(0.55)))
             } else {
                 ScrollView {
                     LazyVStack(spacing: 7) {
@@ -249,18 +278,19 @@ struct CockpitView: View {
             Image(systemName: model.codexDesktopRunning ? "dot.radiowaves.left.and.right" : "power")
                 .foregroundStyle(model.codexDesktopRunning ? CockpitPalette.ice : CockpitPalette.silver)
             VStack(alignment: .leading, spacing: 3) {
-                Text("CODEX DESKTOP · PRESENCE")
+                Text("Codex app")
                     .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .tracking(1)
+                    .textCase(.uppercase)
+                    .tracking(0.9)
                 Text(codexDesktopPresenceDescription)
                     .font(.system(size: 10))
                     .foregroundStyle(CockpitPalette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(11)
-        .background(CockpitPalette.silver.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(CockpitPalette.silver.opacity(0.12)))
+        .padding(13)
+        .background(CockpitPalette.panelRaised.opacity(0.72), in: RoundedRectangle(cornerRadius: 15))
+        .overlay(RoundedRectangle(cornerRadius: 15).stroke(CockpitPalette.separator.opacity(0.58)))
     }
 
     private var closedLidControl: some View {
@@ -269,9 +299,10 @@ struct CockpitView: View {
                 Image(systemName: model.closedLidProtection.leaseActive ? "lock.open.display" : "lock.display")
                     .foregroundStyle(closedLidAccent)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("CLOSED-LID")
+                    Text("Closed-lid mode")
                         .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .tracking(1)
+                        .textCase(.uppercase)
+                        .tracking(0.9)
                     Text(closedLidStatusText)
                         .font(.system(size: 10))
                         .foregroundStyle(CockpitPalette.muted)
@@ -287,7 +318,7 @@ struct CockpitView: View {
             }
 
             if !model.closedLidProtection.helperInstalled || !model.closedLidProtection.helperReachable {
-                Button("Install / Update Helper") { model.installClosedLidHelper() }
+                Button("Enable closed-lid mode") { model.installClosedLidHelper() }
                     .buttonStyle(CockpitSecondaryButtonStyle())
                     .font(.system(size: 10, weight: .semibold))
             }
@@ -297,9 +328,9 @@ struct CockpitView: View {
                 .foregroundStyle(model.closedLidProtection.lastError == nil ? CockpitPalette.muted : CockpitPalette.amber)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(11)
-        .background(closedLidAccent.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(closedLidAccent.opacity(0.18)))
+        .padding(13)
+        .background(CockpitPalette.panelRaised.opacity(0.72), in: RoundedRectangle(cornerRadius: 15))
+        .overlay(RoundedRectangle(cornerRadius: 15).stroke(closedLidAccent.opacity(0.22)))
     }
 
     private var chatDeck: some View {
@@ -308,19 +339,19 @@ struct CockpitView: View {
             chatTimeline
             composer
         }
-        .padding(.leading, 18)
+        .padding(18)
+        .background(CockpitPanel(cornerRadius: 28))
     }
 
     private var chatHeader: some View {
         HStack(spacing: 13) {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
-                    Text("CODEX CONSOLE")
-                        .font(.system(size: 18, weight: .medium, design: .rounded))
-                        .tracking(2.4)
+                    Text("Chat with Codex")
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
                     StatusPill(text: model.appServerState == .running ? "READY" : "OFFLINE", color: serverAccent)
                 }
-                Text("Authenticated Codex App Server · streamed agent events")
+                Text("Your local Codex session — no separate API key")
                     .font(.caption)
                     .foregroundStyle(CockpitPalette.muted)
             }
@@ -377,8 +408,8 @@ struct CockpitView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 22)
             }
-            .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).stroke(CockpitPalette.silver.opacity(0.10)))
+            .background(CockpitPalette.canvas.opacity(0.56), in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(CockpitPalette.separator.opacity(0.58)))
             .onChange(of: model.chatMessages.count) { _, _ in
                 if let last = model.chatMessages.last {
                     withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -401,13 +432,12 @@ struct CockpitView: View {
                 Circle()
                     .stroke(CockpitPalette.silver.opacity(0.22), lineWidth: 1)
                     .frame(width: 72, height: 72)
-                Image(systemName: "command.circle")
+                Image(systemName: "sparkles")
                     .font(.system(size: 38, weight: .ultraLight))
                     .foregroundStyle(CockpitPalette.silver)
             }
-            Text(model.workspacePath == nil ? "SELECT A PROJECT" : "READY FOR A NEW TASK")
-                .font(.system(size: 15, weight: .medium, design: .rounded))
-                .tracking(2)
+            Text(model.workspacePath == nil ? "Choose a project" : "What would you like to build?")
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
             Text(emptyChatDescription)
                 .font(.system(size: 12))
                 .foregroundStyle(CockpitPalette.muted)
@@ -429,7 +459,7 @@ struct CockpitView: View {
                     if prompt.isEmpty {
                         Text("Ask Codex to inspect, explain, build, or fix…")
                             .font(.system(size: 13))
-                            .foregroundStyle(CockpitPalette.muted.opacity(0.75))
+                            .foregroundStyle(CockpitPalette.muted.opacity(0.86))
                             .padding(.horizontal, 13)
                             .padding(.vertical, 14)
                             .allowsHitTesting(false)
@@ -447,8 +477,8 @@ struct CockpitView: View {
                             return .handled
                         }
                 }
-                .background(CockpitPalette.panelRaised.opacity(0.82), in: RoundedRectangle(cornerRadius: 15))
-                .overlay(RoundedRectangle(cornerRadius: 15).stroke(CockpitPalette.silver.opacity(0.16)))
+                .background(CockpitPalette.panelRaised.opacity(0.92), in: RoundedRectangle(cornerRadius: 15))
+                .overlay(RoundedRectangle(cornerRadius: 15).stroke(CockpitPalette.separator.opacity(0.72)))
 
                 if model.chatIsSending {
                     Button {
@@ -499,27 +529,27 @@ struct CockpitView: View {
         if model.codexDesktopRunning {
             if !model.codexDesktopActiveSessionIDs.isEmpty {
                 let count = model.codexDesktopActiveSessionIDs.count
-                return "\(count) active Desktop \(count == 1 ? "session" : "sessions") detected from private lifecycle markers. Prompt and response text is not read."
+                return "\(count) active \(count == 1 ? "session" : "sessions") detected. Your prompts and answers stay private."
             }
             return model.keepAwakeForCodexDesktop
-                ? "Codex is running with no active task detected. With the main power ON, its presence still keeps this Mac awake."
-                : "Codex is running with no active task detected. Presence-based sleep protection is disabled."
+                ? "Codex is open. This Mac stays awake between tasks."
+                : "Codex is open. Only active tasks prevent sleep."
         }
-        return "Codex is not running. Launch ChatGPT/Codex to enable presence-based sleep protection."
+        return "Codex is closed. Open it to enable app-based protection."
     }
 
     private var powerSubtitle: String {
-        guard model.autoKeepAwake else { return "automatic sleep protection disabled" }
+        guard model.autoKeepAwake else { return "Turn it on to protect active Codex work from sleep." }
         if model.closedLidProtection.leaseActive {
-            return "closed-lid lease active · protection engaged"
+            return "Closed-lid mode is active. You can close your MacBook."
         }
         if model.assertionHeld, !model.codexDesktopActiveSessionIDs.isEmpty {
-            return "active Codex Desktop session · protection engaged"
+            return "An active Codex session is protected from sleep."
         }
         if model.assertionHeld, model.codexDesktopRunning, model.keepAwakeForCodexDesktop {
-            return "Codex Desktop detected · protection engaged"
+            return "Codex is open, so sleep protection is active."
         }
-        return model.assertionHeld ? "idle sleep protection engaged" : "armed for Codex work"
+        return model.assertionHeld ? "Sleep protection is active." : "Ready — protection starts with your next Codex task."
     }
 
     private var closedLidAccent: Color {
@@ -529,11 +559,11 @@ struct CockpitView: View {
     }
 
     private var closedLidStatusText: String {
-        if model.closedLidProtection.leaseActive { return "LEASE ACTIVE · LID MAY CLOSE" }
-        if !model.closedLidProtection.helperInstalled { return "ROOT HELPER REQUIRED" }
-        if !model.closedLidProtection.helperReachable { return "HELPER NEEDS UPDATE" }
-        if model.closedLidProtectionEnabled { return "ARMED · WAITS FOR PROTECTION" }
-        return "OFF · NORMAL LID SLEEP"
+        if model.closedLidProtection.leaseActive { return "Active — you can close the lid" }
+        if !model.closedLidProtection.helperInstalled { return "One-time setup required" }
+        if !model.closedLidProtection.helperReachable { return "A quick update is required" }
+        if model.closedLidProtectionEnabled { return "Ready — starts with protected work" }
+        return "Off — closing the lid sleeps normally"
     }
 
     private var serverAccent: Color {
@@ -552,12 +582,12 @@ struct CockpitView: View {
 
     private var emptyChatDescription: String {
         if model.workspacePath == nil {
-            return "Choose a working folder. Codex will be limited to that workspace and will ask before sensitive actions."
+            return "Choose the folder Codex should work in. It will ask before sensitive actions."
         }
         if model.appServerState != .running {
-            return "The managed Codex App Server is starting. CodexAwake can use the runtime bundled with ChatGPT/Codex automatically."
+            return "Codex is connecting. This usually takes only a moment."
         }
-        return "This console uses your existing Codex authentication through the local App Server. No API key is stored by CodexAwake."
+        return "Use your existing Codex sign-in right here. CodexAwake never stores an API key."
     }
 
     private func submitPrompt() {
@@ -623,7 +653,7 @@ private struct ChatMessageRow: View {
                 }
                 Text(renderedText)
                     .font(.system(size: 13))
-                    .foregroundStyle(message.role == .system ? CockpitPalette.silver : .white.opacity(0.91))
+                    .foregroundStyle(CockpitPalette.silver)
                     .textSelection(.enabled)
                     .lineSpacing(3)
             }
@@ -718,7 +748,7 @@ private struct ApprovalOverlay: View {
                     .textSelection(.enabled)
                     .padding(13)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 11))
+                    .background(CockpitPalette.canvas.opacity(0.76), in: RoundedRectangle(cornerRadius: 11))
 
                 Text("Review the request before allowing it. “For session” applies the same decision to later matching requests in this Codex session.")
                     .font(.caption)
@@ -737,7 +767,7 @@ private struct ApprovalOverlay: View {
             .padding(24)
             .frame(width: 540)
             .background(CockpitPanel(cornerRadius: 22))
-            .shadow(color: .black.opacity(0.75), radius: 38, y: 18)
+            .shadow(color: .black.opacity(0.28), radius: 38, y: 18)
         }
     }
 }
@@ -807,23 +837,77 @@ private struct ThinkingIndicator: View {
     }
 }
 
+private struct ThemeSwitcher: View {
+    @Binding var selection: InterfaceTheme
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(InterfaceTheme.allCases) { theme in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selection = theme
+                    }
+                } label: {
+                    Image(systemName: theme.symbol)
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 32, height: 28)
+                        .foregroundStyle(selection == theme ? Color.white : CockpitPalette.muted)
+                        .background(
+                            selection == theme ? CockpitPalette.ice : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("\(theme.title) appearance")
+                .accessibilityLabel("Use \(theme.title.lowercased()) appearance")
+                .accessibilityValue(selection == theme ? "Selected" : "Not selected")
+            }
+        }
+        .padding(4)
+        .background(CockpitPalette.canvas.opacity(0.72), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(CockpitPalette.separator.opacity(0.62)))
+    }
+}
+
+private struct AmbientBlob: View {
+    var body: some View {
+        ZStack {
+            Ellipse()
+                .fill(.white.opacity(0.16))
+                .rotationEffect(.degrees(-18))
+            Circle()
+                .fill(CockpitPalette.violetSoft.opacity(0.80))
+                .frame(width: 82, height: 82)
+                .blur(radius: 13)
+                .offset(x: -22, y: -15)
+            Circle()
+                .fill(CockpitPalette.blueSoft.opacity(0.72))
+                .frame(width: 74, height: 74)
+                .blur(radius: 15)
+                .offset(x: 23, y: 19)
+            Ellipse()
+                .stroke(.white.opacity(0.28), lineWidth: 1)
+                .padding(9)
+                .rotationEffect(.degrees(14))
+        }
+        .compositingGroup()
+    }
+}
+
 private struct CockpitBackground: View {
     var body: some View {
         ZStack {
             CockpitPalette.canvas
             LinearGradient(
-                colors: [Color.white.opacity(0.035), .clear, CockpitPalette.iceDeep.opacity(0.055)],
+                colors: [CockpitPalette.violetSoft.opacity(0.075), .clear, CockpitPalette.blueSoft.opacity(0.045)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Canvas { context, size in
-                for x in stride(from: 0.0, through: size.width, by: 48) {
-                    var path = Path()
-                    path.move(to: CGPoint(x: x, y: 0))
-                    path.addLine(to: CGPoint(x: x, y: size.height))
-                    context.stroke(path, with: .color(.white.opacity(0.013)), lineWidth: 0.5)
-                }
-            }
+            Circle()
+                .fill(CockpitPalette.violetSoft.opacity(0.08))
+                .frame(width: 500, height: 500)
+                .blur(radius: 90)
+                .offset(x: 380, y: -260)
         }
         .ignoresSafeArea()
     }
@@ -836,7 +920,7 @@ private struct CockpitPanel: View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(
                 LinearGradient(
-                    colors: [CockpitPalette.panelRaised.opacity(0.92), CockpitPalette.panel.opacity(0.90)],
+                    colors: [CockpitPalette.panelRaised.opacity(0.94), CockpitPalette.panel.opacity(0.90)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -845,7 +929,7 @@ private struct CockpitPanel: View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
                         LinearGradient(
-                            colors: [.white.opacity(0.20), CockpitPalette.silver.opacity(0.05), .black.opacity(0.6)],
+                            colors: [CockpitPalette.separator.opacity(0.76), CockpitPalette.separator.opacity(0.28)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -859,14 +943,14 @@ private struct CockpitPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .foregroundStyle(Color.black.opacity(0.86))
+            .foregroundStyle(.white)
             .padding(.horizontal, 15)
             .padding(.vertical, 10)
             .background(
                 LinearGradient(
-                    colors: [Color.white, CockpitPalette.ice.opacity(0.88)],
-                    startPoint: .top,
-                    endPoint: .bottom
+                    colors: [CockpitPalette.violetSoft, CockpitPalette.iceDeep],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 ),
                 in: RoundedRectangle(cornerRadius: 10)
             )

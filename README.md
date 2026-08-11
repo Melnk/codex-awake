@@ -9,12 +9,12 @@ It uses the official App Server protocol for managed-task state. For independent
 
 ## Cockpit
 
-Open **Open Cockpit…** from the menu bar. The dark graphite and silver native SwiftUI interface includes:
+Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a clean violet visual language with a saved **Light / Dark** appearance switch. It includes:
 
-- a large illuminated **ON/OFF** control for automatic sleep protection;
+- a clear **ON/OFF** protection card that explains what is currently keeping the Mac awake;
 - Codex Desktop presence, assertion, and combined active-session instruments;
 - privacy-safe IDs for active Codex Desktop and managed tasks;
-- **CLOSED-LID** status, toggle, and helper install/update action;
+- a plain-language **Closed-lid mode** status, toggle, and one-time setup action;
 - a project picker and streamed Codex conversation;
 - **New task**, **Stop**, Enter-to-send, Shift-Enter newline, and arrow-button controls;
 - approval cards for shell commands, network access, and file changes.
@@ -148,16 +148,16 @@ The command contains no capability token or credential. The endpoint changes onl
 - `waitingOnApproval` remains active;
 - `idle`, `notLoaded`, and `systemError` are inactive.
 
-The large main power control overrides every source and releases immediately when switched off. The separate desktop-presence toggle leaves precise managed-task and detected Desktop-task protection enabled. CodexAwake does not expose a default-on manual or indefinite force-awake mode.
+The main protection switch overrides every source and releases immediately when switched off. The separate desktop-presence toggle leaves precise managed-task and detected Desktop-task protection enabled. CodexAwake does not expose a default-on manual or indefinite force-awake mode.
 
 ## Closed-Lid mode
 
 [Apple documents](https://developer.apple.com/documentation/iokit/kiopmassertiontypepreventuseridlesystemsleep) that `PreventUserIdleSystemSleep` may still allow sleep for lid close. Closed-Lid therefore uses a separate root helper instead of pretending that the ordinary assertion can do more than the platform promises.
 
 1. Build and launch CodexAwake 1.3 or later.
-2. In the cockpit, turn on **CLOSED-LID**.
-3. Click **Install / Update Helper** and complete the one-time `sudo` prompt in Terminal.
-4. Wait until the cockpit says **LEASE ACTIVE · LID MAY CLOSE** before closing the display.
+2. In the cockpit, turn on **Closed-lid mode**.
+3. Click **Enable closed-lid mode** and complete the one-time administrator prompt.
+4. Wait until the cockpit says **Active — you can close the lid** before closing the display.
 
 The helper accepts only `status`, `acquire`, `renew`, and `release` over its fixed XPC interface. The installed launch daemon authorizes the exact CDHash of the app that installed it. Ad-hoc rebuilding changes that hash, so local development builds must use **Install / Update Helper** again.
 

@@ -76,6 +76,16 @@ struct MenuContentView: View {
             set: { model.setLaunchAtLogin($0) }
         ))
 
+        Picker("Appearance", selection: Binding(
+            get: { model.interfaceTheme },
+            set: { model.setInterfaceTheme($0) }
+        )) {
+            ForEach(InterfaceTheme.allCases) { theme in
+                Label(theme.title, systemImage: theme.symbol)
+                    .tag(theme)
+            }
+        }
+
         Divider()
         Button("Diagnostics…") { openWindow(id: "diagnostics") }
             .keyboardShortcut(",")
