@@ -1,4 +1,5 @@
 import AppKit
+import CodexAwakeCore
 import SwiftUI
 
 private enum CockpitPalette {
@@ -29,10 +30,13 @@ struct CockpitView: View {
             VStack(spacing: 0) {
                 topBar
 
-                HStack(spacing: 20) {
+                HSplitView {
                     controlDeck
-                        .frame(width: 320)
+                        .padding(.trailing, 10)
+                        .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
                     chatDeck
+                        .padding(.leading, 10)
+                        .frame(minWidth: 460)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
@@ -44,7 +48,7 @@ struct CockpitView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
         }
-        .frame(minWidth: 1040, minHeight: 700)
+        .frame(minWidth: 860, minHeight: 620)
     }
 
     private var topBar: some View {
@@ -251,7 +255,7 @@ struct CockpitView: View {
                     .shadow(color: CockpitPalette.ice, radius: model.totalActiveSessionCount > 0 ? 5 : 0)
             }
 
-            if model.totalActiveSessionCount == 0 {
+            if model.taskSnapshot.active.isEmpty {
                 Label(t("No active Codex sessions", "Нет активных сессий Codex"), systemImage: "checkmark.circle")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(CockpitPalette.muted)
@@ -260,29 +264,35 @@ struct CockpitView: View {
                     .background(CockpitPalette.panelRaised.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
                     .overlay(RoundedRectangle(cornerRadius: 13).stroke(CockpitPalette.separator.opacity(0.55)))
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 7) {
-                        ForEach(model.codexDesktopActiveSessionIDs.sorted(), id: \.self) { id in
-                            ActiveSessionRow(
-                                title: t("Codex Desktop task", "Задача Codex Desktop"),
-                                id: abbreviated(id),
-                                icon: "macwindow",
-                                accent: CockpitPalette.ice
-                            )
-                        }
-                        ForEach(model.activity.activeThreadIds.sorted(), id: \.self) { id in
-                            ActiveSessionRow(
-                                title: id == model.chatThreadID
-                                    ? t("Cockpit task", "Задача из приложения")
-                                    : t("Managed Codex task", "Управляемая задача Codex"),
-                                id: abbreviated(id),
-                                icon: "waveform",
-                                accent: CockpitPalette.ice
-                            )
+                LazyVStack(spacing: 7) {
+                    ForEach(model.taskSnapshot.active) { task in
+                        TaskOverviewRow(task: task, language: model.appLanguage) {
+                            model.openTask(task)
                         }
                     }
                 }
-                .frame(maxHeight: 100)
+            }
+
+            if !model.taskSnapshot.recent.isEmpty {
+                HStack {
+                    Text(t("RECENTLY FINISHED", "НЕДАВНО ЗАВЕРШЕНЫ"))
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .tracking(1.2)
+                        .foregroundStyle(CockpitPalette.muted)
+                    Spacer()
+                    Text("\(model.taskSnapshot.recent.count)")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(CockpitPalette.muted)
+                }
+                .padding(.top, 4)
+
+                LazyVStack(spacing: 7) {
+                    ForEach(model.taskSnapshot.recent) { task in
+                        TaskOverviewRow(task: task, language: model.appLanguage) {
+                            model.openTask(task)
+                        }
+                    }
+                }
             }
         }
     }
@@ -782,27 +792,102 @@ struct CockpitView: View {
     }
 }
 
-private struct ActiveSessionRow: View {
-    let title: String
-    let id: String
-    let icon: String
-    let accent: Color
+private struct TaskOverviewRow: View {
+    let task: CodexTaskRecord
+    let language: AppLanguage
+    let open: () -> Void
 
     var body: some View {
-        HStack(spacing: 9) {
-            Image(systemName: icon)
-                .foregroundStyle(accent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                Text(id)
-                    .font(.system(size: 9, design: .monospaced))
+        Button(action: open) {
+            HStack(alignment: .top, spacing: 9) {
+                Image(systemName: task.source == .desktop ? "macwindow" : statusSymbol)
+                    .foregroundStyle(statusColor)
+                    .frame(width: 16, height: 17)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 7) {
+                        Text(task.projectName)
+                            .font(.system(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(statusTitle)
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .foregroundStyle(statusColor)
+                    }
+
+                    if let path = task.workspacePath {
+                        Text(path)
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundStyle(CockpitPalette.muted)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+
+                    HStack(spacing: 5) {
+                        Text(abbreviated(task.threadId))
+                        Text("·")
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text(duration(until: task.status.isActive ? context.date : task.updatedAt))
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                    }
+                    .font(.system(size: 8, design: .monospaced))
                     .foregroundStyle(CockpitPalette.muted)
+                }
             }
-            Spacer()
+            .padding(10)
+            .background(statusColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(statusColor.opacity(0.13)))
+            .contentShape(Rectangle())
         }
-        .padding(10)
-        .background(accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+        .buttonStyle(.plain)
+        .help(language.text("Open this task", "Открыть эту задачу"))
+    }
+
+    private var statusTitle: String {
+        switch task.status {
+        case .waiting: language.text("WAITING", "ОЖИДАЕТ")
+        case .thinking: language.text("THINKING", "ДУМАЕТ")
+        case .runningTool: language.text("TOOLS", "ИНСТРУМЕНТЫ")
+        case .waitingForApproval: language.text("APPROVAL", "ПОДТВЕРЖДЕНИЕ")
+        case .completed: language.text("DONE", "ГОТОВО")
+        case .error: language.text("ERROR", "ОШИБКА")
+        }
+    }
+
+    private var statusSymbol: String {
+        switch task.status {
+        case .waiting: "clock"
+        case .thinking: "sparkles"
+        case .runningTool: "wrench.and.screwdriver"
+        case .waitingForApproval: "hand.raised"
+        case .completed: "checkmark.circle"
+        case .error: "exclamationmark.triangle"
+        }
+    }
+
+    private var statusColor: Color {
+        switch task.status {
+        case .waiting: CockpitPalette.muted
+        case .thinking, .runningTool: CockpitPalette.ice
+        case .waitingForApproval: CockpitPalette.amber
+        case .completed: Color.green
+        case .error: CockpitPalette.danger
+        }
+    }
+
+    private func duration(until end: Date) -> String {
+        let seconds = max(0, Int(end.timeIntervalSince(task.startedAt)))
+        if seconds >= 3_600 {
+            return String(format: "%d:%02d:%02d", seconds / 3_600, (seconds / 60) % 60, seconds % 60)
+        }
+        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private func abbreviated(_ value: String) -> String {
+        guard value.count > 12 else { return value }
+        return "\(value.prefix(6))…\(value.suffix(4))"
     }
 }
 

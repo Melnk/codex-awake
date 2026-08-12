@@ -6,7 +6,9 @@ import Foundation
 final class CodexDesktopMonitor {
     struct Snapshot: Equatable {
         var isRunning = false
-        var activeSessionIDs: Set<String> = []
+        var activeSessions: [CodexDesktopSessionState] = []
+
+        var activeSessionIDs: Set<String> { Set(activeSessions.map(\.id)) }
     }
 
     typealias SnapshotHandler = @MainActor (Snapshot) -> Void
@@ -85,7 +87,7 @@ final class CodexDesktopMonitor {
         launchDate = applications.compactMap(\.launchDate).max()
         updateSnapshot(
             isRunning: running,
-            activeSessionIDs: running ? snapshot.activeSessionIDs : []
+            activeSessions: running ? snapshot.activeSessions : []
         )
     }
 
@@ -101,12 +103,12 @@ final class CodexDesktopMonitor {
         guard !Task.isCancelled else { return }
         updateSnapshot(
             isRunning: true,
-            activeSessionIDs: Set(sessions.map(\.id))
+            activeSessions: sessions
         )
     }
 
-    private func updateSnapshot(isRunning: Bool, activeSessionIDs: Set<String>) {
-        let updated = Snapshot(isRunning: isRunning, activeSessionIDs: activeSessionIDs)
+    private func updateSnapshot(isRunning: Bool, activeSessions: [CodexDesktopSessionState]) {
+        let updated = Snapshot(isRunning: isRunning, activeSessions: activeSessions)
         guard updated != snapshot else { return }
         snapshot = updated
         snapshotHandler?(updated)

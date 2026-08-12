@@ -102,7 +102,7 @@ final class ScriptedTransport: LocalWebSocketTransport, @unchecked Sendable {
             response = "{\"id\":\(id),\"result\":{\"data\":[\"thread-1\"]}}"
         case "thread/read":
             response =
-                "{\"id\":\(id),\"result\":{\"thread\":{\"id\":\"thread-1\",\"status\":{\"type\":\"active\",\"activeFlags\":[\"waitingOnApproval\"]}}}}"
+                "{\"id\":\(id),\"result\":{\"thread\":{\"id\":\"thread-1\",\"name\":\"Private chat title\",\"cwd\":\"/tmp/project\",\"preview\":\"private prompt that must not be retained\",\"createdAt\":1786528800,\"updatedAt\":1786528860,\"status\":{\"type\":\"active\",\"activeFlags\":[\"waitingOnApproval\"]}}}}"
         default:
             response = "{\"id\":\(id),\"result\":{}}"
         }

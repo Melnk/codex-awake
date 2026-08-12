@@ -3,10 +3,19 @@ import Foundation
 public struct CodexDesktopSessionState: Equatable, Sendable, Identifiable {
     public let id: String
     public let modifiedAt: Date
+    public let workspacePath: String?
+    public let startedAt: Date?
 
-    public init(id: String, modifiedAt: Date) {
+    public init(
+        id: String,
+        modifiedAt: Date,
+        workspacePath: String? = nil,
+        startedAt: Date? = nil
+    ) {
         self.id = id
         self.modifiedAt = modifiedAt
+        self.workspacePath = workspacePath
+        self.startedAt = startedAt
     }
 }
 
@@ -58,10 +67,16 @@ public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecke
             if let desktopLaunchDate, modifiedAt < desktopLaunchDate.addingTimeInterval(-2) {
                 continue
             }
-            guard let sessionID = desktopSessionID(in: file),
+            guard let metadata = desktopSessionMetadata(in: file),
                 lastLifecycleMarker(in: file) == .started
             else { continue }
-            active.append(.init(id: sessionID, modifiedAt: modifiedAt))
+            active.append(
+                .init(
+                    id: metadata.id,
+                    modifiedAt: modifiedAt,
+                    workspacePath: metadata.workspacePath,
+                    startedAt: metadata.startedAt
+                ))
         }
 
         return active.sorted {
@@ -70,7 +85,13 @@ public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecke
         }
     }
 
-    private func desktopSessionID(in file: URL) -> String? {
+    private struct SessionMetadata {
+        let id: String
+        let workspacePath: String?
+        let startedAt: Date?
+    }
+
+    private func desktopSessionMetadata(in file: URL) -> SessionMetadata? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
         guard let prefix = try? handle.read(upToCount: chunkSize),
@@ -85,7 +106,12 @@ public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecke
             let id = payload["id"] as? String,
             !id.isEmpty
         else { return nil }
-        return id
+        let timestamp = object["timestamp"] as? String
+        return SessionMetadata(
+            id: id,
+            workspacePath: payload["cwd"] as? String,
+            startedAt: timestamp.flatMap { ISO8601DateFormatter().date(from: $0) }
+        )
     }
 
     private func lastLifecycleMarker(in file: URL) -> LifecycleMarker? {

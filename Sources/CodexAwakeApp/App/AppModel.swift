@@ -32,11 +32,14 @@ final class AppModel: ObservableObject {
     @Published var workspacePath: String?
     @Published var interfaceTheme: InterfaceTheme
     @Published var appLanguage: AppLanguage
+    @Published var taskSnapshot = CodexTaskSnapshot()
 
     let diagnostics = DiagnosticsStore()
     let chat: CodexChatSession
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "App")
     private let tracker = ThreadActivityTracker()
+    private let taskRegistry = CodexTaskRegistry()
+    private let taskNotifications = TaskNotificationService()
     private let preferences: any AppPreferencesStoring
     private let desktopMonitor = CodexDesktopMonitor()
     private let power: PowerProtectionManager
@@ -57,6 +60,7 @@ final class AppModel: ObservableObject {
     private var lastEventAt: Date?
     private var lastReconciliationAt: Date?
     private let startedAt = Date()
+    private var didLoadTaskRegistry = false
 
     init(preferences: any AppPreferencesStoring = UserDefaultsAppPreferences()) {
         self.preferences = preferences
@@ -430,7 +434,7 @@ final class AppModel: ObservableObject {
     }
 
     var totalActiveSessionCount: Int {
-        activity.activeCount + codexDesktopActiveSessionIDs.count
+        taskSnapshot.activeCount
     }
 
     func copyCodexCommand() {
@@ -529,6 +533,31 @@ final class AppModel: ObservableObject {
 
     func resolveApproval(_ request: CodexApprovalRequest, decision: CodexApprovalDecision) {
         chat.resolve(request, decision: decision)
+        guard let threadId = request.threadId else { return }
+        Task {
+            let snapshot = await taskRegistry.markApprovalResolved(threadId: threadId)
+            publishTaskSnapshot(snapshot)
+        }
+    }
+
+    func openTask(_ task: CodexTaskRecord) {
+        var link = URLComponents()
+        link.scheme = "codex"
+        link.host = "threads"
+        link.path = "/\(task.threadId)"
+        if let url = link.url, NSWorkspace.shared.open(url) {
+            return
+        }
+
+        let bundleIDs: Set<String> = ["com.openai.codex", "com.openai.chat"]
+        NSWorkspace.shared.runningApplications
+            .first(where: { $0.bundleIdentifier.map(bundleIDs.contains) ?? false })?
+            .activate(options: [.activateAllWindows])
+        chat.markUnavailable(
+            t(
+                "Could not open the selected task. Codex was brought to the front instead.",
+                "Не удалось открыть выбранную задачу. Вместо этого открыто окно Codex."
+            ))
     }
 
     var chatMessages: [CodexChatMessage] { chat.messages }
@@ -639,9 +668,14 @@ final class AppModel: ObservableObject {
 
     private func handle(_ event: AppServerEvent) async {
         lastEventAt = Date()
+        let taskState = await taskRegistry.apply(event)
+        publishTaskSnapshot(taskState)
         switch event {
         case .agentMessageDelta, .agentMessageCompleted, .runtimeError, .ignored:
             chat.handle(event)
+            return
+        case .itemStarted, .itemCompleted:
+            // Item lifecycle changes task status but not the power tracker.
             return
         default:
             break
@@ -681,6 +715,10 @@ final class AppModel: ObservableObject {
             lastReconciliationAt = Date()
             activity = snapshot
             await coordinator.update(snapshot)
+            var taskState = await taskRegistry.reconcileManagedStatuses(reconciled.statuses)
+            taskState = await taskRegistry.reconcileManaged(reconciled.summaries)
+            publishTaskSnapshot(taskState, notifyTransitions: didLoadTaskRegistry)
+            didLoadTaskRegistry = true
             await refreshPublishedState()
         } catch {
             record(error)
@@ -693,8 +731,13 @@ final class AppModel: ObservableObject {
         if state == .stopped || state == .failed {
             Task {
                 let snapshot = await tracker.confirmServerStopped()
+                let taskState = await taskRegistry.markManagedServerStopped(failed: state == .failed)
                 await coordinator.serverConfirmedStopped()
                 activity = snapshot
+                publishTaskSnapshot(
+                    taskState,
+                    notifyTransitions: !isShuttingDown && state == .failed
+                )
                 await refreshPublishedState()
             }
         }
@@ -764,6 +807,8 @@ final class AppModel: ObservableObject {
         codexDesktopRunning = snapshot.isRunning
         codexDesktopActiveSessionIDs = snapshot.activeSessionIDs
         Task {
+            let taskState = await taskRegistry.reconcileDesktop(snapshot.activeSessions)
+            publishTaskSnapshot(taskState)
             await coordinator.setCodexDesktopRunning(snapshot.isRunning)
             await coordinator.setCodexDesktopActiveCount(snapshot.activeSessionIDs.count)
             await refreshPublishedState()
@@ -893,7 +938,40 @@ final class AppModel: ObservableObject {
     }
 
     private func handleServerRequest(_ request: AppServerServerRequest) async -> JSONValue? {
-        await chat.handleServerRequest(request)
+        if let threadId = request.params?["threadId"]?.stringValue,
+            request.method.hasSuffix("/requestApproval")
+        {
+            let snapshot = await taskRegistry.markWaitingForApproval(threadId: threadId)
+            publishTaskSnapshot(snapshot)
+        }
+        return await chat.handleServerRequest(request)
+    }
+
+    private func publishTaskSnapshot(
+        _ snapshot: CodexTaskSnapshot,
+        notifyTransitions: Bool = true
+    ) {
+        let previous = Dictionary(uniqueKeysWithValues: taskSnapshot.all.map { ($0.id, $0) })
+        taskSnapshot = snapshot
+        NSApplication.shared.dockTile.badgeLabel = snapshot.activeCount > 0 ? "\(snapshot.activeCount)" : nil
+
+        guard notifyTransitions else { return }
+        for task in snapshot.all {
+            let oldStatus = previous[task.id]?.status
+            guard oldStatus != task.status else { continue }
+            switch task.status {
+            case .waiting where oldStatus?.isActive == true && oldStatus != .waiting:
+                taskNotifications.post(for: task, kind: .attention, language: appLanguage)
+            case .waitingForApproval:
+                taskNotifications.post(for: task, kind: .approval, language: appLanguage)
+            case .completed where oldStatus?.isActive == true:
+                taskNotifications.post(for: task, kind: .completed, language: appLanguage)
+            case .error:
+                taskNotifications.post(for: task, kind: .error, language: appLanguage)
+            default:
+                break
+            }
+        }
     }
 
     private static var architecture: String {

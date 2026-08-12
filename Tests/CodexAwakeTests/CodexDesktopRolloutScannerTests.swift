@@ -13,6 +13,8 @@ final class CodexDesktopRolloutScannerTests: XCTestCase {
 
         let result = CodexDesktopRolloutScanner().activeSessions(in: fixture.root)
         XCTAssertEqual(result.map(\.id), [fixture.sessionID])
+        XCTAssertEqual(result.first?.workspacePath, "/tmp/CodexAwake")
+        XCTAssertEqual(result.first?.startedAt, ISO8601DateFormatter().date(from: "2026-08-11T10:00:00Z"))
     }
 
     func testCompletedDesktopRolloutIsInactive() throws {
@@ -77,7 +79,7 @@ private struct RolloutFixture {
         file = root.appendingPathComponent("rollout-\(sessionID).jsonl")
 
         var lines = [
-            #"{"timestamp":"2026-08-11T10:00:00Z","type":"session_meta","payload":{"id":"\#(sessionID)","source":"\#(source)","originator":"\#(originator)"}}"#
+            #"{"timestamp":"2026-08-11T10:00:00Z","type":"session_meta","payload":{"id":"\#(sessionID)","source":"\#(source)","originator":"\#(originator)","cwd":"/tmp/CodexAwake"}}"#
         ]
         lines += events.enumerated().map { index, event in
             #"{"timestamp":"2026-08-11T10:00:0\#(index + 1)Z","type":"event_msg","payload":{"type":"\#(event)","turn_id":"turn-1"}}"#

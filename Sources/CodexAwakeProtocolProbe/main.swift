@@ -33,7 +33,9 @@ struct ProtocolProbe {
         do {
             try await client.connect()
             let result = try await client.reconcileStatuses()
-            print("Handshake OK; loaded threads: \(result.loaded.count)")
+            print(
+                "Handshake OK; loaded threads: \(result.loaded.count); metadata records: \(result.summaries.count)"
+            )
             if arguments.count == 3 {
                 let threadID = try await client.startThread(cwd: arguments[2])
                 print("Thread start OK: \(SafeDisplay.abbreviated(threadID))")

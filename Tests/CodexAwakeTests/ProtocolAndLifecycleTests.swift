@@ -27,6 +27,26 @@ final class ProtocolAndLifecycleTests: XCTestCase {
         XCTAssertEqual(result.loaded, ["thread-1"])
         XCTAssertEqual(result.statuses["thread-1"]?.kind, .active)
         XCTAssertEqual(result.statuses["thread-1"]?.activeFlags, ["waitingOnApproval"])
+        XCTAssertEqual(result.summaries.first?.workspacePath, "/tmp/project")
+        await client.disconnect()
+    }
+
+    func testReconciliationRetainsOnlyPrivacySafeThreadMetadata() async throws {
+        let transport = ScriptedTransport()
+        let client = makeClient(transport: transport, collector: EventCollector())
+        try await client.connect()
+
+        let result = try await client.reconcileStatuses()
+        let threads = result.summaries
+
+        XCTAssertEqual(threads.count, 1)
+        XCTAssertEqual(threads[0].id, "thread-1")
+        XCTAssertEqual(threads[0].workspacePath, "/tmp/project")
+        XCTAssertEqual(threads[0].status.activeFlags, ["waitingOnApproval"])
+        let readRequest = transport.sent.first(where: { $0.contains("thread/read") }) ?? ""
+        XCTAssertTrue(readRequest.contains("includeTurns"))
+        XCTAssertTrue(readRequest.contains("false"))
+        XCTAssertFalse(transport.sent.contains(where: { $0.contains("thread/list") }))
         await client.disconnect()
     }
 
@@ -57,6 +77,25 @@ final class ProtocolAndLifecycleTests: XCTestCase {
         )
     }
 
+    func testThreadStartedDecodesWorkingFolderWithoutTitleOrPreview() {
+        let event = AppServerMessageCodec.event(
+            method: "thread/started",
+            params: .object([
+                "thread": .object([
+                    "id": .string("thread-a"),
+                    "cwd": .string("/tmp/project"),
+                    "name": .string("Private title"),
+                    "preview": .string("Private prompt"),
+                ])
+            ])
+        )
+
+        XCTAssertEqual(
+            event,
+            .threadStarted(threadId: "thread-a", workspacePath: "/tmp/project")
+        )
+    }
+
     func testCompletedAgentMessageIsAuthoritative() throws {
         let event = AppServerMessageCodec.event(
             method: "item/completed",
@@ -83,10 +122,29 @@ final class ProtocolAndLifecycleTests: XCTestCase {
         )
     }
 
+    func testToolLifecycleDecodingUsesOnlyItemMetadata() {
+        let event = AppServerMessageCodec.event(
+            method: "item/started",
+            params: .object([
+                "threadId": .string("thread-a"),
+                "turnId": .string("turn-a"),
+                "item": .object([
+                    "id": .string("tool-a"),
+                    "type": .string("commandExecution"),
+                    "command": .string("private command text"),
+                ]),
+            ])
+        )
+        XCTAssertEqual(
+            event,
+            .itemStarted(threadId: "thread-a", itemId: "tool-a", kind: .commandExecution)
+        )
+    }
+
     func testUnrelatedNotificationsAreIgnoredWithoutProtocolFailure() {
         XCTAssertEqual(
-            AppServerMessageCodec.event(method: "item/started", params: .object([:])),
-            .ignored(method: "item/started")
+            AppServerMessageCodec.event(method: "account/updated", params: .object([:])),
+            .ignored(method: "account/updated")
         )
     }
 

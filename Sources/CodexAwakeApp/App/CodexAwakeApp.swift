@@ -102,21 +102,27 @@ private struct CockpitLaunchingMenuBarLabel: View {
     let language: AppLanguage
 
     var body: some View {
-        Image(systemName: symbol)
-            .accessibilityLabel(
-                language.text(
-                    "CodexAwake, \(activeCount) active managed Codex threads",
-                    "CodexAwake, активных управляемых потоков Codex: \(activeCount)"
-                )
+        HStack(spacing: 3) {
+            Image(systemName: symbol)
+            if activeCount > 0 {
+                Text("\(activeCount)")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+            }
+        }
+        .accessibilityLabel(
+            language.text(
+                "CodexAwake, \(activeCount) active managed Codex threads",
+                "CodexAwake, активных управляемых потоков Codex: \(activeCount)"
             )
-            .task {
-                guard !didRequestInitialWindow else { return }
-                didRequestInitialWindow = true
-                await presentCockpit()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .codexAwakeOpenCockpit)) { _ in
-                Task { await presentCockpit() }
-            }
+        )
+        .task {
+            guard !didRequestInitialWindow else { return }
+            didRequestInitialWindow = true
+            await presentCockpit()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .codexAwakeOpenCockpit)) { _ in
+            Task { await presentCockpit() }
+        }
     }
 
     @MainActor

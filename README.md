@@ -120,7 +120,11 @@ Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a 
 - native **Launch at Login** state, including the macOS approval status;
 - a saved **EN / RU** language switch for the cockpit, menu, dialogs, and diagnostics;
 - Codex Desktop presence, assertion, and combined active-session instruments;
-- privacy-safe IDs for active Codex Desktop and managed tasks;
+- a 1.7 task center with project name, working folder, elapsed time, and live status;
+- statuses for waiting, thinking, tool execution, approval, completion, and failure;
+- privacy-safe recent-task history plus macOS notifications for completion, failure, approvals, and required input;
+- task counts in both the Dock badge and menu bar, with one-click task opening;
+- a draggable split view for resizing the left control deck and the Codex chat;
 - a plain-language **Closed-lid mode** status, toggle, and one-time setup action;
 - a project picker and streamed Codex conversation;
 - a compact composer that grows automatically from one to six lines;
@@ -128,6 +132,12 @@ Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a 
 - approval cards for shell commands, network access, and file changes.
 
 The cockpit uses the authenticated [Codex App Server](https://learn.chatgpt.com/docs/app-server), not a separately stored API key. Select a project folder before starting a task. Codex is given workspace-write access to that folder and uses the installed runtime's `on-request` approval policy; approval prompts remain visible while the task is active.
+
+### Version 1.7 / Версия 1.7
+
+**English.** The left task center now shows every detected active Codex task and up to 20 recently finished tasks. Each row contains the project folder, working path, elapsed time, and lifecycle status. Click a row to open that exact task in the installed Codex app. Drag the vertical divider to make the task panel or chat wider. Active-task counts appear in the menu bar and on the Dock icon. macOS notifications report completion, failure, approval, and user-input states.
+
+**Русский.** В левом центре задач теперь показываются все обнаруженные активные задачи Codex и до 20 недавних завершённых задач. В строке есть название проекта, рабочая папка, время работы и текущий статус. Нажмите на строку, чтобы открыть именно эту задачу в установленном приложении Codex. Потяните вертикальный разделитель, чтобы расширить список или чат. Счётчик активных задач виден в строке меню и на иконке Dock. Уведомления macOS сообщают о завершении, ошибке, подтверждении и ожидании ответа пользователя.
 
 ## How it works
 
@@ -142,7 +152,7 @@ Codex Desktop bundle ID ─→ ON/OFF presence ───────────
                                                                       root helper → pmset disablesleep
 ```
 
-The runtime status returned by `thread/read` is the source of truth. Notifications (`turn/started`, `turn/completed`, `thread/status/changed`, and `thread/closed`) reduce latency; `thread/loaded/list` plus `thread/read` reconcile state at connection, reconnection, and every 10 seconds.
+The runtime status returned by `thread/read` is the source of truth for loaded work. Notifications (`turn/started`, `turn/completed`, `item/started`, `item/completed`, `thread/status/changed`, and `thread/closed`) reduce latency; `thread/loaded/list` plus `thread/read(includeTurns: false)` reconcile live state at connection, reconnection, and every 10 seconds. Only threads loaded in CodexAwake's managed server are read. The bounded recent history contains tasks observed by the current CodexAwake run. CodexAwake ignores returned chat names and previews; the displayed project name is derived from the working folder.
 
 ## Tracked and untracked activity
 
@@ -152,14 +162,15 @@ Tracked:
 - Codex CLI/TUI clients launched with the menu's **Open Codex** action;
 - clients started manually with the command from **Copy Codex command**;
 - multiple clients connected to the same CodexAwake-managed endpoint;
-- active statuses including `waitingOnApproval`;
+- project name, working folder, start/update time, and active statuses including `waitingOnApproval` for managed tasks;
+- lifecycle-derived waiting, thinking, tool, approval, completed, and error states;
 - whether ChatGPT/Codex Desktop is currently running;
 - active top-level Codex Desktop tasks whose rollout metadata says `source = vscode` and `originator = Codex Desktop`.
 
 Not tracked:
 
 - `codex` started without `--remote`;
-- Codex Desktop prompts, responses, reasoning, tool output, titles, and subagent rollouts;
+- Codex Desktop prompts, responses, reasoning, tool output, titles, and subagent rollouts (only root session ID, working folder, timestamp, and lifecycle markers are used);
 - Codex Cloud jobs;
 - other users' processes;
 - unrelated App Server processes;
@@ -341,7 +352,7 @@ Some Codex versions may expose their own experimental prevent-idle-sleep feature
 
 ## App Server compatibility
 
-App Server is an evolving protocol. CodexAwake performs runtime capability checks instead of accepting a version number alone. The implementation uses stable non-experimental methods in the current official schema: `initialize`, `initialized`, `thread/loaded/list`, `thread/read`, and status/turn/thread notifications. It does not request `capabilities.experimentalApi`.
+App Server is an evolving protocol. CodexAwake performs runtime capability checks instead of accepting a version number alone. The implementation uses non-experimental methods in the current official schema: `initialize`, `initialized`, `thread/loaded/list`, `thread/read`, and status/turn/item/thread notifications. It does not request `capabilities.experimentalApi`. Task rows open the installed Codex app with its local `codex://threads/<id>` link, so CodexAwake does not resume or load that task's conversation.
 
 The ChatGPT-bundled Codex runtime `0.147.0-alpha.6.5` was discovered and used to validate a real local App Server launch and `initialize`/`initialized` handshake on 2026-08-11. No model prompt was sent during that check. Real multi-client notification fan-out still requires an explicit quota-consuming manual turn and is not claimed as verified. The fake-server suite validates the remaining wire/state logic. Run the read-only handshake after updating Codex:
 

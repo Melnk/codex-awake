@@ -73,11 +73,13 @@ public struct ActivitySnapshot: Equatable, Sendable {
 }
 
 public enum AppServerEvent: Equatable, Sendable {
-    case threadStarted(threadId: String)
+    case threadStarted(threadId: String, workspacePath: String?)
     case turnStarted(TurnKey)
     case turnCompleted(TurnKey, status: String?)
     case threadStatusChanged(threadId: String, status: ThreadRuntimeStatus)
     case threadClosed(threadId: String)
+    case itemStarted(threadId: String, itemId: String, kind: CodexTaskItemKind)
+    case itemCompleted(threadId: String, itemId: String, kind: CodexTaskItemKind)
     case agentMessageDelta(threadId: String, turnId: String, itemId: String, delta: String)
     case agentMessageCompleted(threadId: String, turnId: String, itemId: String, text: String, phase: String?)
     case runtimeError(threadId: String?, message: String)

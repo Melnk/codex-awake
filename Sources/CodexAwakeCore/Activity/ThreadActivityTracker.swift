@@ -12,7 +12,7 @@ public actor ThreadActivityTracker {
     @discardableResult
     public func apply(_ event: AppServerEvent) -> ActivitySnapshot {
         switch event {
-        case .threadStarted(let threadId):
+        case .threadStarted(let threadId, _):
             loadedThreadIds.insert(threadId)
 
         case .turnStarted(let key):
@@ -48,7 +48,8 @@ public actor ThreadActivityTracker {
             statuses[threadId] = .init(kind: .notLoaded)
             loadedThreadIds.remove(threadId)
 
-        case .agentMessageDelta, .agentMessageCompleted, .runtimeError, .ignored:
+        case .itemStarted, .itemCompleted, .agentMessageDelta, .agentMessageCompleted,
+            .runtimeError, .ignored:
             return snapshot()
 
         case .unknown:

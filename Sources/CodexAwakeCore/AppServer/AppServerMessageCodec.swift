@@ -81,7 +81,10 @@ public enum AppServerMessageCodec {
             guard let id = params?["thread"]?["id"]?.stringValue ?? threadId else {
                 return .unknown(method: method)
             }
-            return .threadStarted(threadId: id)
+            return .threadStarted(
+                threadId: id,
+                workspacePath: params?["thread"]?["cwd"]?.stringValue
+            )
 
         case "turn/started":
             guard let threadId, let turnId else { return .unknown(method: method) }
@@ -115,22 +118,42 @@ public enum AppServerMessageCodec {
                 delta: delta
             )
 
-        case "item/completed":
+        case "item/started":
             guard let threadId,
-                let turnId = params?["turnId"]?.stringValue,
                 let item = params?["item"],
-                item["type"]?.stringValue == "agentMessage",
                 let itemId = item["id"]?.stringValue,
-                let text = item["text"]?.stringValue
+                let rawKind = item["type"]?.stringValue
             else {
                 return .ignored(method: method)
             }
-            return .agentMessageCompleted(
+            return .itemStarted(
                 threadId: threadId,
-                turnId: turnId,
                 itemId: itemId,
-                text: text,
-                phase: item["phase"]?.stringValue
+                kind: .init(wireValue: rawKind)
+            )
+
+        case "item/completed":
+            guard let threadId, let item = params?["item"],
+                let itemId = item["id"]?.stringValue,
+                let rawKind = item["type"]?.stringValue
+            else { return .ignored(method: method) }
+
+            if rawKind == "agentMessage",
+                let turnId = params?["turnId"]?.stringValue,
+                let text = item["text"]?.stringValue
+            {
+                return .agentMessageCompleted(
+                    threadId: threadId,
+                    turnId: turnId,
+                    itemId: itemId,
+                    text: text,
+                    phase: item["phase"]?.stringValue
+                )
+            }
+            return .itemCompleted(
+                threadId: threadId,
+                itemId: itemId,
+                kind: .init(wireValue: rawKind)
             )
 
         case "error":

@@ -26,7 +26,7 @@ The implementation was compared with the current [official Codex App Server docu
 - `thread/list`, `thread/read`, `thread/loaded/list`;
 - `thread/status/changed`, `turn/started`, `turn/completed`, `thread/closed`;
 - `thread/start`, `turn/start`, `turn/interrupt`;
-- `item/agentMessage/delta` and authoritative agent-message `item/completed` events;
+- generic `item/started` / `item/completed` lifecycle events plus streamed agent-message deltas;
 - command/file-change server requests and approval decision responses;
 - runtime statuses `notLoaded`, `idle`, `systemError`, and `active` with `activeFlags`.
 
@@ -52,6 +52,8 @@ When protocol drift causes decoding or a method error, CodexAwake keeps prompts 
 ## Multi-client semantics
 
 Automated tests simulate multiple clients and notification/reconciliation behavior. A real bundled runtime was used for a quota-free server handshake, but notification fan-out between an observer client and turns started by another TUI is not claimed as experimentally verified because that requires a real model turn. Correctness does not depend on notification broadcast: periodic `thread/loaded/list` + `thread/read` reconciliation remains the source of truth.
+
+The task center does not call the global `thread/list` history endpoint. It calls `thread/read(includeTurns: false)` only for IDs returned by the managed server's `thread/loaded/list`, retaining ID, cwd, timestamps, and runtime status while discarding `name` and `preview` at the protocol boundary.
 
 Run the read-only real check after installing/updating Codex:
 

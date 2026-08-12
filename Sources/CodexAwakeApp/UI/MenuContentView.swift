@@ -1,3 +1,4 @@
+import CodexAwakeCore
 import SwiftUI
 
 struct MenuContentView: View {
@@ -42,11 +43,20 @@ struct MenuContentView: View {
         if model.totalActiveSessionCount > 0 {
             Divider()
             Text(t("Active sessions", "Активные сессии"))
-            ForEach(model.codexDesktopActiveSessionIDs.sorted(), id: \.self) { id in
-                Text("• Desktop \(abbreviated(id))")
+            ForEach(model.taskSnapshot.active) { task in
+                Button("• \(task.projectName) · \(taskStatus(task.status))") {
+                    model.openTask(task)
+                }
             }
-            ForEach(model.activity.activeThreadIds.sorted(), id: \.self) { id in
-                Text("• \(t("Managed", "Управляемая")) \(abbreviated(id))")
+        }
+
+        if !model.taskSnapshot.recent.isEmpty {
+            Divider()
+            Text(t("Recently finished", "Недавно завершены"))
+            ForEach(model.taskSnapshot.recent.prefix(5)) { task in
+                Button("• \(task.projectName) · \(taskStatus(task.status))") {
+                    model.openTask(task)
+                }
             }
         }
 
@@ -175,9 +185,15 @@ struct MenuContentView: View {
             .keyboardShortcut("q")
     }
 
-    private func abbreviated(_ value: String) -> String {
-        guard value.count > 12 else { return value }
-        return "\(value.prefix(8))…\(value.suffix(4))"
+    private func taskStatus(_ status: CodexTaskStatus) -> String {
+        switch status {
+        case .waiting: t("waiting", "ожидает")
+        case .thinking: t("thinking", "думает")
+        case .runningTool: t("tools", "инструменты")
+        case .waitingForApproval: t("approval", "подтверждение")
+        case .completed: t("done", "готово")
+        case .error: t("error", "ошибка")
+        }
     }
 
     private func t(_ english: String, _ russian: String) -> String {

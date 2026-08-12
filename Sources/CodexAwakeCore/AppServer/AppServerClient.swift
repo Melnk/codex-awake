@@ -84,19 +84,25 @@ public actor AppServerClient {
     }
 
     public func reconcileStatuses() async throws -> (
-        loaded: Set<String>, statuses: [String: ThreadRuntimeStatus]
+        loaded: Set<String>,
+        statuses: [String: ThreadRuntimeStatus],
+        summaries: [CodexThreadSummary]
     ) {
         let loadedResult = try await request(method: "thread/loaded/list")
         let ids = Set(loadedResult["data"]?.arrayValue?.compactMap(\.stringValue) ?? [])
         var statuses: [String: ThreadRuntimeStatus] = [:]
+        var summaries: [CodexThreadSummary] = []
         for id in ids {
             let result = try await request(
                 method: "thread/read",
                 params: .object(["threadId": .string(id), "includeTurns": .bool(false)])
             )
             statuses[id] = .parse(result["thread"]?["status"])
+            if let thread = result["thread"], let summary = Self.threadSummary(from: thread) {
+                summaries.append(summary)
+            }
         }
-        return (ids, statuses)
+        return (ids, statuses, summaries)
     }
 
     public func startThread(cwd: String) async throws -> String {
@@ -239,5 +245,28 @@ public actor AppServerClient {
         let values = pending.values
         pending.removeAll()
         for request in values { request.continuation.resume(throwing: error) }
+    }
+
+    private static func threadSummary(from value: JSONValue) -> CodexThreadSummary? {
+        guard let id = value["id"]?.stringValue else { return nil }
+        return CodexThreadSummary(
+            id: id,
+            workspacePath: value["cwd"]?.stringValue,
+            createdAt: date(from: value["createdAt"]),
+            updatedAt: date(from: value["updatedAt"]),
+            status: .parse(value["status"])
+        )
+    }
+
+    private static func date(from value: JSONValue?) -> Date? {
+        switch value {
+        case .number(let raw):
+            let seconds = raw > 10_000_000_000 ? raw / 1_000 : raw
+            return Date(timeIntervalSince1970: seconds)
+        case .string(let raw):
+            return ISO8601DateFormatter().date(from: raw)
+        default:
+            return nil
+        }
     }
 }
