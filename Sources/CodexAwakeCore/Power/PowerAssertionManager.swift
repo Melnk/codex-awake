@@ -17,11 +17,15 @@ public actor PowerAssertionManager: PowerAssertionControlling {
         self.reason = reason
     }
 
+    nonisolated static var assertionTypeName: String {
+        kIOPMAssertPreventUserIdleDisplaySleep as String
+    }
+
     public func acquire() throws {
         guard assertionID == nil else { return }
         var newID = IOPMAssertionID(0)
         let result = IOPMAssertionCreateWithName(
-            kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
+            kIOPMAssertPreventUserIdleDisplaySleep as CFString,
             IOPMAssertionLevel(kIOPMAssertionLevelOn),
             reason as CFString,
             &newID
@@ -30,14 +34,14 @@ public actor PowerAssertionManager: PowerAssertionControlling {
             throw CodexAwakeError.serverStartFailed("IOPMAssertionCreateWithName returned \(result)")
         }
         assertionID = newID
-        logger.notice("Acquired the CodexAwake idle-system-sleep assertion")
+        logger.notice("Acquired the CodexAwake idle-display-sleep assertion")
     }
 
     public func release() {
         guard let assertionID else { return }
         IOPMAssertionRelease(assertionID)
         self.assertionID = nil
-        logger.notice("Released the CodexAwake idle-system-sleep assertion")
+        logger.notice("Released the CodexAwake idle-display-sleep assertion")
     }
 
     public func assertionIsHeld() -> Bool {

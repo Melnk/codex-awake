@@ -128,7 +128,7 @@ struct CockpitView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(t("While Codex is open", "Пока Codex открыт"))
                             .font(.system(size: 11, weight: .semibold))
-                        Text(t("Keep this Mac awake even between tasks", "Не давать Mac уснуть между задачами"))
+                        Text(t("Keep this Mac and display awake between tasks", "Не выключать Mac и экран между задачами"))
                             .font(.system(size: 9))
                             .foregroundStyle(CockpitPalette.muted)
                     }
@@ -191,7 +191,7 @@ struct CockpitView: View {
                     .tint(.white.opacity(0.88))
                 }
 
-                Text(model.autoKeepAwake ? t("Your Mac stays awake", "Ваш Mac не уснёт") : t("Protection is paused", "Защита приостановлена"))
+                Text(powerHeadline)
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
@@ -557,6 +557,14 @@ struct CockpitView: View {
         return model.assertionHeld
             ? t("Sleep protection is active.", "Защита от сна активна.")
             : t("Ready — protection starts with your next Codex task.", "Готово — защита включится со следующей задачей Codex.")
+    }
+
+    private var powerHeadline: String {
+        guard model.autoKeepAwake else { return t("Protection is paused", "Защита приостановлена") }
+        if model.assertionHeld {
+            return t("Mac and display stay awake", "Mac и экран не уснут")
+        }
+        return t("Protection is ready", "Защита готова")
     }
 
     private var closedLidAccent: Color {

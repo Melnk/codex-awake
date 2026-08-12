@@ -20,9 +20,9 @@
 
 **Decision:** aggregate all active IDs through one coordinator. Acquire only on zero-to-nonzero and release only after nonzero-to-zero plus debounce. Ten threads do not create ten assertions.
 
-## ADR-006 — Do not hold the display awake
+## ADR-006 — Hold the display awake during protected work
 
-**Decision:** use `kIOPMAssertionTypePreventUserIdleSystemSleep`, not a display-sleep assertion. Codex work does not require the screen to remain lit.
+**Decision:** use one `kIOPMAssertPreventUserIdleDisplaySleep` assertion while aggregate Codex protection is active. The macOS SDK specifies that this prevents automatic display dim/off and also prevents idle system sleep. Release it through the existing debounce as soon as no protected Codex work or enabled Desktop-presence source remains. This supersedes the original system-only assertion after live use showed that a dark display was unexpected and disruptive.
 
 ## ADR-007 — Opt-in privileged Closed-Lid lease
 

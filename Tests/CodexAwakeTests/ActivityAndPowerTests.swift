@@ -1,4 +1,4 @@
-import CodexAwakeCore
+@testable import CodexAwakeCore
 import XCTest
 
 final class ActivityAndPowerTests: XCTestCase {
@@ -8,6 +8,10 @@ final class ActivityAndPowerTests: XCTestCase {
 
     private func settle() async {
         try? await Task.sleep(for: .milliseconds(20))
+    }
+
+    func testProductionAssertionPreventsIdleDisplaySleep() {
+        XCTAssertEqual(PowerAssertionManager.assertionTypeName, "PreventUserIdleDisplaySleep")
     }
 
     func testZeroActiveThreadsAssertionOff() async {
