@@ -565,7 +565,10 @@ struct CockpitView: View {
                 .background(CockpitPalette.panelRaised.opacity(0.92), in: RoundedRectangle(cornerRadius: 15))
                 .overlay(RoundedRectangle(cornerRadius: 15).stroke(CockpitPalette.separator.opacity(0.72)))
                 .onKeyPress(keys: [.return], phases: .down) { press in
-                    guard !press.modifiers.contains(.shift) else { return .ignored }
+                    if press.modifiers.contains(.shift) {
+                        prompt.append("\n")
+                        return .handled
+                    }
                     guard canAttemptSend else { return .handled }
                     submitPrompt()
                     return .handled
