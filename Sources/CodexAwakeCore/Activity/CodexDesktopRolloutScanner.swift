@@ -10,9 +10,16 @@ public struct CodexDesktopSessionState: Equatable, Sendable, Identifiable {
     }
 }
 
+public protocol CodexDesktopSessionScanning: Sendable {
+    func activeSessions(
+        in sessionsRoot: URL,
+        desktopLaunchDate: Date?
+    ) -> [CodexDesktopSessionState]
+}
+
 /// Reads only rollout identity metadata and task lifecycle markers. Prompt and response
 /// fields are never decoded, returned, or logged.
-public struct CodexDesktopRolloutScanner: @unchecked Sendable {
+public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecked Sendable {
     private enum LifecycleMarker {
         case started
         case completed
@@ -32,24 +39,28 @@ public struct CodexDesktopRolloutScanner: @unchecked Sendable {
         desktopLaunchDate: Date? = nil
     ) -> [CodexDesktopSessionState] {
         let keys: [URLResourceKey] = [.isRegularFileKey, .contentModificationDateKey]
-        guard let enumerator = fileManager.enumerator(
-            at: sessionsRoot,
-            includingPropertiesForKeys: keys,
-            options: [.skipsHiddenFiles]
-        ) else { return [] }
+        guard
+            let enumerator = fileManager.enumerator(
+                at: sessionsRoot,
+                includingPropertiesForKeys: keys,
+                options: [.skipsHiddenFiles]
+            )
+        else { return [] }
 
         var active: [CodexDesktopSessionState] = []
         for case let file as URL in enumerator where file.pathExtension == "jsonl" {
             guard let values = try? file.resourceValues(forKeys: Set(keys)),
-                  values.isRegularFile == true,
-                  let modifiedAt = values.contentModificationDate else { continue }
+                values.isRegularFile == true,
+                let modifiedAt = values.contentModificationDate
+            else { continue }
 
             // A lifecycle marker left by a previous crashed app launch is not live work.
             if let desktopLaunchDate, modifiedAt < desktopLaunchDate.addingTimeInterval(-2) {
                 continue
             }
             guard let sessionID = desktopSessionID(in: file),
-                  lastLifecycleMarker(in: file) == .started else { continue }
+                lastLifecycleMarker(in: file) == .started
+            else { continue }
             active.append(.init(id: sessionID, modifiedAt: modifiedAt))
         }
 
@@ -63,21 +74,24 @@ public struct CodexDesktopRolloutScanner: @unchecked Sendable {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
         guard let prefix = try? handle.read(upToCount: chunkSize),
-              let newline = prefix.firstIndex(of: 0x0A) else { return nil }
+            let newline = prefix.firstIndex(of: 0x0A)
+        else { return nil }
         let firstLine = prefix.prefix(upTo: newline)
         guard let object = try? JSONSerialization.jsonObject(with: firstLine) as? [String: Any],
-              object["type"] as? String == "session_meta",
-              let payload = object["payload"] as? [String: Any],
-              payload["source"] as? String == "vscode",
-              payload["originator"] as? String == "Codex Desktop",
-              let id = payload["id"] as? String,
-              !id.isEmpty else { return nil }
+            object["type"] as? String == "session_meta",
+            let payload = object["payload"] as? [String: Any],
+            payload["source"] as? String == "vscode",
+            payload["originator"] as? String == "Codex Desktop",
+            let id = payload["id"] as? String,
+            !id.isEmpty
+        else { return nil }
         return id
     }
 
     private func lastLifecycleMarker(in file: URL) -> LifecycleMarker? {
         guard let handle = try? FileHandle(forReadingFrom: file),
-              let end = try? handle.seekToEnd() else { return nil }
+            let end = try? handle.seekToEnd()
+        else { return nil }
         defer { try? handle.close() }
 
         let overlapCount = max(startedPattern.count, completedPattern.count) - 1
@@ -96,7 +110,7 @@ public struct CodexDesktopRolloutScanner: @unchecked Sendable {
                 let started = searchable.range(of: startedPattern, options: .backwards)
                 let completed = searchable.range(of: completedPattern, options: .backwards)
                 switch (started, completed) {
-                case let (.some(startedRange), .some(completedRange)):
+                case (.some(let startedRange), .some(let completedRange)):
                     return startedRange.lowerBound > completedRange.lowerBound ? .started : .completed
                 case (.some, .none):
                     return .started

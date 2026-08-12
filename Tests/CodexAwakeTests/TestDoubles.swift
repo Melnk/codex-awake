@@ -68,9 +68,10 @@ final class ScriptedTransport: LocalWebSocketTransport, @unchecked Sendable {
         defer { condition.unlock() }
         sent.append(text)
         guard let data = text.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let id = object["id"] as? Int,
-              let method = object["method"] as? String else { return }
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let id = object["id"] as? Int,
+            let method = object["method"] as? String
+        else { return }
 
         let response: String?
         switch method {
@@ -83,7 +84,8 @@ final class ScriptedTransport: LocalWebSocketTransport, @unchecked Sendable {
         case "thread/loaded/list":
             response = "{\"id\":\(id),\"result\":{\"data\":[\"thread-1\"]}}"
         case "thread/read":
-            response = "{\"id\":\(id),\"result\":{\"thread\":{\"id\":\"thread-1\",\"status\":{\"type\":\"active\",\"activeFlags\":[\"waitingOnApproval\"]}}}}"
+            response =
+                "{\"id\":\(id),\"result\":{\"thread\":{\"id\":\"thread-1\",\"status\":{\"type\":\"active\",\"activeFlags\":[\"waitingOnApproval\"]}}}}"
         default:
             response = "{\"id\":\(id),\"result\":{}}"
         }

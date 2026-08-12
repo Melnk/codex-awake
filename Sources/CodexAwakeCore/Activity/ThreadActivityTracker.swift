@@ -66,9 +66,10 @@ public actor ThreadActivityTracker {
     ) -> ActivitySnapshot {
         loadedThreadIds = reconciledLoadedIds
         statuses.merge(reconciledStatuses) { _, new in new }
-        activeThreadIds = Set(reconciledStatuses.compactMap { id, status in
-            status.isActive ? id : nil
-        })
+        activeThreadIds = Set(
+            reconciledStatuses.compactMap { id, status in
+                status.isActive ? id : nil
+            })
         activeTurnKeys = activeTurnKeys.filter { activeThreadIds.contains($0.threadId) }
         certainty = .known
         return snapshot()

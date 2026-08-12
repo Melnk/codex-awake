@@ -60,12 +60,13 @@ public actor AppServerClient {
                     "clientInfo": .object([
                         "name": .string("codex_awake"),
                         "title": .string("CodexAwake"),
-                        "version": .string("1.5.1")
+                        "version": .string(AppBuildInfo.marketingVersion),
                     ])
                 ])
             )
             try await send(text: AppServerMessageCodec.notification(method: "initialized"))
-            logger.notice("Initialized local App Server observer connection at \(self.endpoint, privacy: .public)")
+            logger.notice(
+                "Initialized local App Server observer connection at \(self.endpoint, privacy: .public)")
         } catch {
             await disconnect(notify: false)
             throw error
@@ -82,7 +83,9 @@ public actor AppServerClient {
         if notify { await disconnectHandler("Disconnected") }
     }
 
-    public func reconcileStatuses() async throws -> (loaded: Set<String>, statuses: [String: ThreadRuntimeStatus]) {
+    public func reconcileStatuses() async throws -> (
+        loaded: Set<String>, statuses: [String: ThreadRuntimeStatus]
+    ) {
         let loadedResult = try await request(method: "thread/loaded/list")
         let ids = Set(loadedResult["data"]?.arrayValue?.compactMap(\.stringValue) ?? [])
         var statuses: [String: ThreadRuntimeStatus] = [:]
@@ -103,7 +106,7 @@ public actor AppServerClient {
                 "cwd": .string(cwd),
                 "approvalPolicy": .string("on-request"),
                 "sandbox": .string("workspace-write"),
-                "serviceName": .string("codex_awake")
+                "serviceName": .string("codex_awake"),
             ])
         )
         guard let threadId = result["thread"]?["id"]?.stringValue else {
@@ -120,7 +123,7 @@ public actor AppServerClient {
                 "input": .array([
                     .object([
                         "type": .string("text"),
-                        "text": .string(text)
+                        "text": .string(text),
                     ])
                 ]),
                 "cwd": .string(cwd),
@@ -128,8 +131,8 @@ public actor AppServerClient {
                 "sandboxPolicy": .object([
                     "type": .string("workspaceWrite"),
                     "writableRoots": .array([.string(cwd)]),
-                    "networkAccess": .bool(true)
-                ])
+                    "networkAccess": .bool(true),
+                ]),
             ])
         )
         guard let turnId = result["turn"]?["id"]?.stringValue else {
@@ -143,7 +146,7 @@ public actor AppServerClient {
             method: "turn/interrupt",
             params: .object([
                 "threadId": .string(threadId),
-                "turnId": .string(turnId)
+                "turnId": .string(turnId),
             ])
         )
     }
@@ -186,7 +189,8 @@ public actor AppServerClient {
             }
         } catch {
             if !Task.isCancelled {
-                logger.error("App Server connection ended: \(SafeDisplay.sanitizedError(error), privacy: .public)")
+                logger.error(
+                    "App Server connection ended: \(SafeDisplay.sanitizedError(error), privacy: .public)")
             }
         }
 
@@ -203,7 +207,8 @@ public actor AppServerClient {
         case .response(let id, let result):
             pending.removeValue(forKey: id)?.continuation.resume(returning: result)
         case .error(let id, let code, let message):
-            pending.removeValue(forKey: id)?.continuation.resume(throwing: CodexAwakeError.remoteError(code: code, message: message))
+            pending.removeValue(forKey: id)?.continuation.resume(
+                throwing: CodexAwakeError.remoteError(code: code, message: message))
         case .notification(let method, let params):
             await eventHandler(AppServerMessageCodec.event(method: method, params: params))
         case .serverRequest(let id, let method, let params):

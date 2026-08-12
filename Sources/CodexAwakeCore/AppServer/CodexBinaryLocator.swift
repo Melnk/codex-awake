@@ -41,16 +41,20 @@ public struct CodexBinaryLocator: CodexBinaryLocating, @unchecked Sendable {
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
             fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/codex").path,
-            fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".codex/bin/codex").path
+            fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".codex/bin/codex").path,
         ]
 
         var lastCompatibilityError: Error?
         for candidate in candidates.uniqued() where fileManager.isExecutableFile(atPath: candidate) {
             do {
-                let version = try await Self.capture(executable: candidate, arguments: ["--version"], timeout: .seconds(5))
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let mainHelp = try await Self.capture(executable: candidate, arguments: ["--help"], timeout: .seconds(5))
-                let help = try await Self.capture(executable: candidate, arguments: ["app-server", "--help"], timeout: .seconds(5))
+                let version = try await Self.capture(
+                    executable: candidate, arguments: ["--version"], timeout: .seconds(5)
+                )
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                let mainHelp = try await Self.capture(
+                    executable: candidate, arguments: ["--help"], timeout: .seconds(5))
+                let help = try await Self.capture(
+                    executable: candidate, arguments: ["app-server", "--help"], timeout: .seconds(5))
                 guard Self.isCompatible(mainHelp: mainHelp, appServerHelp: help) else {
                     lastCompatibilityError = CodexAwakeError.incompatibleCodex(
                         "help does not advertise both `--remote` and Unix socket App Server listening"
@@ -69,7 +73,7 @@ public struct CodexBinaryLocator: CodexBinaryLocating, @unchecked Sendable {
     public static func bundledCodexCandidates(homeDirectory: URL) -> [String] {
         let relativePaths = [
             "ChatGPT.app/Contents/Resources/codex",
-            "Codex.app/Contents/Resources/codex"
+            "Codex.app/Contents/Resources/codex",
         ]
         return relativePaths.map { "/Applications/\($0)" }
             + relativePaths.map { homeDirectory.appendingPathComponent("Applications/\($0)").path }
@@ -112,7 +116,9 @@ public struct CodexBinaryLocator: CodexBinaryLocating, @unchecked Sendable {
             let data = output.fileHandleForReading.readDataToEndOfFile()
             let errorData = errors.fileHandleForReading.readDataToEndOfFile()
             guard process.terminationStatus == 0 else {
-                let detail = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "exit \(process.terminationStatus)"
+                let detail =
+                    String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    ?? "exit \(process.terminationStatus)"
                 throw CodexAwakeError.incompatibleCodex(String(detail.prefix(300)))
             }
             return String(data: data, encoding: .utf8) ?? ""

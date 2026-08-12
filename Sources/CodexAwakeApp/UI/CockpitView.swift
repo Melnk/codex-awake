@@ -54,7 +54,7 @@ struct CockpitView: View {
                 .interpolation(.high)
                 .scaledToFit()
                 .frame(width: 48, height: 48)
-            .shadow(color: CockpitPalette.ice.opacity(0.24), radius: 14, y: 7)
+                .shadow(color: CockpitPalette.ice.opacity(0.24), radius: 14, y: 7)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("CodexAwake")
@@ -65,7 +65,8 @@ struct CockpitView: View {
             }
 
             StatusPill(
-                text: model.appServerState == .running ? t("CODEX READY", "CODEX ГОТОВ") : t("CONNECTING", "ПОДКЛЮЧЕНИЕ"),
+                text: model.appServerState == .running
+                    ? t("CODEX READY", "CODEX ГОТОВ") : t("CONNECTING", "ПОДКЛЮЧЕНИЕ"),
                 color: serverAccent
             )
             .padding(.leading, 8)
@@ -79,15 +80,18 @@ struct CockpitView: View {
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(CockpitPalette.muted)
 
-            LanguageSwitcher(selection: Binding(
-                get: { model.appLanguage },
-                set: { model.setAppLanguage($0) }
-            ))
+            LanguageSwitcher(
+                selection: Binding(
+                    get: { model.appLanguage },
+                    set: { model.setAppLanguage($0) }
+                ))
 
-            ThemeSwitcher(language: model.appLanguage, selection: Binding(
-                get: { model.interfaceTheme },
-                set: { model.setInterfaceTheme($0) }
-            ))
+            ThemeSwitcher(
+                language: model.appLanguage,
+                selection: Binding(
+                    get: { model.interfaceTheme },
+                    set: { model.setInterfaceTheme($0) }
+                ))
         }
         .padding(.horizontal, 26)
         .padding(.vertical, 18)
@@ -128,15 +132,22 @@ struct CockpitView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(t("While Codex is open", "Пока Codex открыт"))
                             .font(.system(size: 11, weight: .semibold))
-                        Text(t("Keep this Mac and display awake between tasks", "Не выключать Mac и экран между задачами"))
-                            .font(.system(size: 9))
-                            .foregroundStyle(CockpitPalette.muted)
+                        Text(
+                            t(
+                                "Keep this Mac and display awake between tasks",
+                                "Не выключать Mac и экран между задачами")
+                        )
+                        .font(.system(size: 9))
+                        .foregroundStyle(CockpitPalette.muted)
                     }
                     Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.keepAwakeForCodexDesktop },
-                        set: { model.setKeepAwakeForCodexDesktop($0) }
-                    ))
+                    Toggle(
+                        "",
+                        isOn: Binding(
+                            get: { model.keepAwakeForCodexDesktop },
+                            set: { model.setKeepAwakeForCodexDesktop($0) }
+                        )
+                    )
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
@@ -181,10 +192,13 @@ struct CockpitView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.88))
                     Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.autoKeepAwake },
-                        set: { model.setAutoKeepAwake($0) }
-                    ))
+                    Toggle(
+                        "",
+                        isOn: Binding(
+                            get: { model.autoKeepAwake },
+                            set: { model.setAutoKeepAwake($0) }
+                        )
+                    )
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
@@ -307,28 +321,36 @@ struct CockpitView: View {
                         .foregroundStyle(CockpitPalette.muted)
                 }
                 Spacer()
-                Toggle("", isOn: Binding(
-                    get: { model.closedLidProtectionEnabled },
-                    set: { model.setClosedLidProtectionEnabled($0) }
-                ))
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { model.closedLidProtectionEnabled },
+                        set: { model.setClosedLidProtectionEnabled($0) }
+                    )
+                )
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
             }
 
             if !model.closedLidProtection.helperInstalled || !model.closedLidProtection.helperReachable {
-                Button(t("Enable closed-lid mode", "Включить работу с закрытой крышкой")) { model.installClosedLidHelper() }
-                    .buttonStyle(CockpitSecondaryButtonStyle())
-                    .font(.system(size: 10, weight: .semibold))
+                Button(t("Enable closed-lid mode", "Включить работу с закрытой крышкой")) {
+                    model.installClosedLidHelper()
+                }
+                .buttonStyle(CockpitSecondaryButtonStyle())
+                .font(.system(size: 10, weight: .semibold))
             }
 
-            Text(model.closedLidActionMessage ?? t(
-                "Requires administrator approval once. Restores normal sleep when its lease expires.",
-                "Требует однократного подтверждения администратора. После окончания аренды обычный сон восстановится."
-            ))
-                .font(.system(size: 9))
-                .foregroundStyle(model.closedLidProtection.lastError == nil ? CockpitPalette.muted : CockpitPalette.amber)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                model.closedLidActionMessage
+                    ?? t(
+                        "Requires administrator approval once. Restores normal sleep when its lease expires.",
+                        "Требует однократного подтверждения администратора. После окончания аренды обычный сон восстановится."
+                    )
+            )
+            .font(.system(size: 9))
+            .foregroundStyle(model.closedLidProtection.lastError == nil ? CockpitPalette.muted : CockpitPalette.amber)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(13)
         .background(CockpitPalette.panelRaised.opacity(0.72), in: RoundedRectangle(cornerRadius: 15))
@@ -351,11 +373,17 @@ struct CockpitView: View {
                 HStack(spacing: 8) {
                     Text(t("Chat with Codex", "Чат с Codex"))
                         .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    StatusPill(text: model.appServerState == .running ? t("READY", "ГОТОВ") : t("OFFLINE", "НЕ В СЕТИ"), color: serverAccent)
+                    StatusPill(
+                        text: model.appServerState == .running ? t("READY", "ГОТОВ") : t("OFFLINE", "НЕ В СЕТИ"),
+                        color: serverAccent)
                 }
-                Text(t("Your local Codex session — no separate API key", "Локальная сессия Codex — отдельный API-ключ не нужен"))
-                    .font(.caption)
-                    .foregroundStyle(CockpitPalette.muted)
+                Text(
+                    t(
+                        "Your local Codex session — no separate API key",
+                        "Локальная сессия Codex — отдельный API-ключ не нужен")
+                )
+                .font(.caption)
+                .foregroundStyle(CockpitPalette.muted)
             }
             Spacer()
 
@@ -438,8 +466,12 @@ struct CockpitView: View {
                     .font(.system(size: 38, weight: .ultraLight))
                     .foregroundStyle(CockpitPalette.silver)
             }
-            Text(model.workspacePath == nil ? t("Choose a project", "Выберите проект") : t("What would you like to build?", "Что вы хотите сделать?"))
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
+            Text(
+                model.workspacePath == nil
+                    ? t("Choose a project", "Выберите проект")
+                    : t("What would you like to build?", "Что вы хотите сделать?")
+            )
+            .font(.system(size: 20, weight: .semibold, design: .rounded))
             Text(emptyChatDescription)
                 .font(.system(size: 12))
                 .foregroundStyle(CockpitPalette.muted)
@@ -459,12 +491,16 @@ struct CockpitView: View {
             HStack(alignment: .bottom, spacing: 12) {
                 ZStack(alignment: .topLeading) {
                     if prompt.isEmpty {
-                        Text(t("Ask Codex to inspect, explain, build, or fix…", "Попросите Codex проверить, объяснить, собрать или исправить…"))
-                            .font(.system(size: 13))
-                            .foregroundStyle(CockpitPalette.muted.opacity(0.86))
-                            .padding(.horizontal, 13)
-                            .padding(.vertical, 14)
-                            .allowsHitTesting(false)
+                        Text(
+                            t(
+                                "Ask Codex to inspect, explain, build, or fix…",
+                                "Попросите Codex проверить, объяснить, собрать или исправить…")
+                        )
+                        .font(.system(size: 13))
+                        .foregroundStyle(CockpitPalette.muted.opacity(0.86))
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 14)
+                        .allowsHitTesting(false)
                     }
                     TextEditor(text: $prompt)
                         .font(.system(size: 13))
@@ -524,7 +560,8 @@ struct CockpitView: View {
     }
 
     private var composerStatusText: String {
-        model.chatUnavailableReason ?? t("Enter to send · Shift+Enter for a new line", "Enter — отправить · Shift+Enter — новая строка")
+        model.chatUnavailableReason
+            ?? t("Enter to send · Shift+Enter for a new line", "Enter — отправить · Shift+Enter — новая строка")
     }
 
     private var codexDesktopPresenceDescription: String {
@@ -537,16 +574,27 @@ struct CockpitView: View {
                 )
             }
             return model.keepAwakeForCodexDesktop
-                ? t("Codex is open. This Mac stays awake between tasks.", "Codex открыт. Mac не уснёт даже между задачами.")
-                : t("Codex is open. Only active tasks prevent sleep.", "Codex открыт. Сон блокируют только активные задачи.")
+                ? t(
+                    "Codex is open. This Mac stays awake between tasks.",
+                    "Codex открыт. Mac не уснёт даже между задачами.")
+                : t(
+                    "Codex is open. Only active tasks prevent sleep.",
+                    "Codex открыт. Сон блокируют только активные задачи.")
         }
-        return t("Codex is closed. Open it to enable app-based protection.", "Codex закрыт. Откройте его для защиты от сна.")
+        return t(
+            "Codex is closed. Open it to enable app-based protection.", "Codex закрыт. Откройте его для защиты от сна.")
     }
 
     private var powerSubtitle: String {
-        guard model.autoKeepAwake else { return t("Turn it on to protect active Codex work from sleep.", "Включите защиту, чтобы активная работа Codex не прерывалась сном.") }
+        guard model.autoKeepAwake else {
+            return t(
+                "Turn it on to protect active Codex work from sleep.",
+                "Включите защиту, чтобы активная работа Codex не прерывалась сном.")
+        }
         if model.closedLidProtection.leaseActive {
-            return t("Closed-lid mode is active. You can close your MacBook.", "Режим закрытой крышки активен. MacBook можно закрыть.")
+            return t(
+                "Closed-lid mode is active. You can close your MacBook.",
+                "Режим закрытой крышки активен. MacBook можно закрыть.")
         }
         if model.assertionHeld, !model.codexDesktopActiveSessionIDs.isEmpty {
             return t("An active Codex session is protected from sleep.", "Активная сессия Codex защищена от сна.")
@@ -556,7 +604,9 @@ struct CockpitView: View {
         }
         return model.assertionHeld
             ? t("Sleep protection is active.", "Защита от сна активна.")
-            : t("Ready — protection starts with your next Codex task.", "Готово — защита включится со следующей задачей Codex.")
+            : t(
+                "Ready — protection starts with your next Codex task.",
+                "Готово — защита включится со следующей задачей Codex.")
     }
 
     private var powerHeadline: String {
@@ -574,10 +624,18 @@ struct CockpitView: View {
     }
 
     private var closedLidStatusText: String {
-        if model.closedLidProtection.leaseActive { return t("Active — you can close the lid", "Активен — крышку можно закрыть") }
-        if !model.closedLidProtection.helperInstalled { return t("One-time setup required", "Нужна однократная настройка") }
-        if !model.closedLidProtection.helperReachable { return t("A quick update is required", "Требуется быстрое обновление") }
-        if model.closedLidProtectionEnabled { return t("Ready — starts with protected work", "Готов — включится при защищённой работе") }
+        if model.closedLidProtection.leaseActive {
+            return t("Active — you can close the lid", "Активен — крышку можно закрыть")
+        }
+        if !model.closedLidProtection.helperInstalled {
+            return t("One-time setup required", "Нужна однократная настройка")
+        }
+        if !model.closedLidProtection.helperReachable {
+            return t("A quick update is required", "Требуется быстрое обновление")
+        }
+        if model.closedLidProtectionEnabled {
+            return t("Ready — starts with protected work", "Готов — включится при защищённой работе")
+        }
         return t("Off — closing the lid sleeps normally", "Выключен — при закрытии крышки Mac уснёт")
     }
 
@@ -597,12 +655,18 @@ struct CockpitView: View {
 
     private var emptyChatDescription: String {
         if model.workspacePath == nil {
-            return t("Choose the folder Codex should work in. It will ask before sensitive actions.", "Выберите папку для работы Codex. Перед важными действиями он спросит разрешение.")
+            return t(
+                "Choose the folder Codex should work in. It will ask before sensitive actions.",
+                "Выберите папку для работы Codex. Перед важными действиями он спросит разрешение.")
         }
         if model.appServerState != .running {
-            return t("Codex is connecting. This usually takes only a moment.", "Codex подключается. Обычно это занимает несколько секунд.")
+            return t(
+                "Codex is connecting. This usually takes only a moment.",
+                "Codex подключается. Обычно это занимает несколько секунд.")
         }
-        return t("Use your existing Codex sign-in right here. CodexAwake never stores an API key.", "Используйте текущий вход в Codex. CodexAwake не хранит API-ключ.")
+        return t(
+            "Use your existing Codex sign-in right here. CodexAwake never stores an API key.",
+            "Используйте текущий вход в Codex. CodexAwake не хранит API-ключ.")
     }
 
     private func submitPrompt() {
@@ -693,7 +757,8 @@ private struct ChatMessageRow: View {
     private var roleLabel: String {
         switch message.role {
         case .user: language.text("YOU", "ВЫ")
-        case .assistant: message.phase == "commentary" ? language.text("CODEX · PROGRESS", "CODEX · ХОД РАБОТЫ") : "CODEX"
+        case .assistant:
+            message.phase == "commentary" ? language.text("CODEX · PROGRESS", "CODEX · ХОД РАБОТЫ") : "CODEX"
         case .system: language.text("SYSTEM", "СИСТЕМА")
         }
     }
@@ -770,19 +835,23 @@ private struct ApprovalOverlay: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(CockpitPalette.canvas.opacity(0.76), in: RoundedRectangle(cornerRadius: 11))
 
-                Text(t(
-                    "Review the request before allowing it. “For session” applies the same decision to later matching requests in this Codex session.",
-                    "Проверьте запрос перед подтверждением. «Для сессии» применит это решение к следующим похожим запросам в текущей сессии Codex."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(CockpitPalette.muted)
+                Text(
+                    t(
+                        "Review the request before allowing it. “For session” applies the same decision to later matching requests in this Codex session.",
+                        "Проверьте запрос перед подтверждением. «Для сессии» применит это решение к следующим похожим запросам в текущей сессии Codex."
+                    )
+                )
+                .font(.caption)
+                .foregroundStyle(CockpitPalette.muted)
 
                 HStack(spacing: 10) {
                     Button(t("Decline", "Отклонить")) { model.resolveApproval(request, decision: .decline) }
                         .buttonStyle(CockpitSecondaryButtonStyle())
                     Spacer()
-                    Button(t("Allow for Session", "Разрешить для сессии")) { model.resolveApproval(request, decision: .acceptForSession) }
-                        .buttonStyle(CockpitSecondaryButtonStyle())
+                    Button(t("Allow for Session", "Разрешить для сессии")) {
+                        model.resolveApproval(request, decision: .acceptForSession)
+                    }
+                    .buttonStyle(CockpitSecondaryButtonStyle())
                     Button(t("Allow Once", "Разрешить один раз")) { model.resolveApproval(request, decision: .accept) }
                         .buttonStyle(CockpitPrimaryButtonStyle())
                 }
@@ -889,8 +958,14 @@ private struct ThemeSwitcher: View {
                 }
                 .buttonStyle(.plain)
                 .help(language.text("\(theme.title) appearance", "Тема: \(theme.title(in: language))"))
-                .accessibilityLabel(language.text("Use \(theme.title.lowercased()) appearance", "Использовать тему «\(theme.title(in: language))»"))
-                .accessibilityValue(selection == theme ? language.text("Selected", "Выбрано") : language.text("Not selected", "Не выбрано"))
+                .accessibilityLabel(
+                    language.text(
+                        "Use \(theme.title.lowercased()) appearance", "Использовать тему «\(theme.title(in: language))»"
+                    )
+                )
+                .accessibilityValue(
+                    selection == theme
+                        ? language.text("Selected", "Выбрано") : language.text("Not selected", "Не выбрано"))
             }
         }
         .padding(4)
@@ -922,7 +997,9 @@ private struct LanguageSwitcher: View {
                 .buttonStyle(.plain)
                 .help(language.title)
                 .accessibilityLabel("\(language.title) / \(language.code)")
-                .accessibilityValue(selection == language ? selection.text("Selected", "Выбрано") : selection.text("Not selected", "Не выбрано"))
+                .accessibilityValue(
+                    selection == language
+                        ? selection.text("Selected", "Выбрано") : selection.text("Not selected", "Не выбрано"))
             }
         }
         .padding(4)

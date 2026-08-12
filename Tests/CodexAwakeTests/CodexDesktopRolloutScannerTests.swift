@@ -40,7 +40,8 @@ final class CodexDesktopRolloutScannerTests: XCTestCase {
     func testMarkerTextInsideUserContentDoesNotCreateFalseActivity() throws {
         let fixture = try RolloutFixture(events: [], source: "vscode", originator: "Codex Desktop")
         defer { fixture.remove() }
-        let userLine = #"{"timestamp":"2026-08-11T10:00:01Z","type":"event_msg","payload":{"type":"user_message","message":"example: \"type\":\"task_started\""}}"#
+        let userLine =
+            #"{"timestamp":"2026-08-11T10:00:01Z","type":"event_msg","payload":{"type":"user_message","message":"example: \"type\":\"task_started\""}}"#
         try FileHandle(forWritingTo: fixture.file).appendLine(userLine)
 
         XCTAssertTrue(CodexDesktopRolloutScanner().activeSessions(in: fixture.root).isEmpty)

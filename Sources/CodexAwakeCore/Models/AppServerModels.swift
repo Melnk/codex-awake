@@ -114,7 +114,8 @@ public enum CodexAwakeError: LocalizedError, Equatable, Sendable {
         switch self {
         case .codexNotFound: return "Codex CLI was not found. Choose an executable Codex binary in Diagnostics."
         case .codexNotExecutable(let path): return "The selected Codex binary is not executable: \(path)"
-        case .incompatibleCodex(let detail): return "This Codex CLI does not expose the required App Server features: \(detail)"
+        case .incompatibleCodex(let detail):
+            return "This Codex CLI does not expose the required App Server features: \(detail)"
         case .socketPathTooLong: return "The local Unix socket path exceeds the macOS limit."
         case .socketOwnedByAnotherProcess: return "The runtime socket is in use by a process CodexAwake does not own."
         case .invalidSocket(let detail): return "Unsafe stale socket: \(detail)"

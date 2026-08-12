@@ -15,11 +15,12 @@ struct ProtocolProbe {
             }
             return
         }
-        guard arguments.count == 1 ||
-                (arguments.count == 3 && arguments[1] == "--start-thread") else {
-            FileHandle.standardError.write(Data(
-                "usage: CodexAwakeProtocolProbe /path/to/socket [--start-thread /workspace] | --scan-desktop /sessions/root\n".utf8
-            ))
+        guard arguments.count == 1 || (arguments.count == 3 && arguments[1] == "--start-thread") else {
+            FileHandle.standardError.write(
+                Data(
+                    "usage: CodexAwakeProtocolProbe /path/to/socket [--start-thread /workspace] | --scan-desktop /sessions/root\n"
+                        .utf8
+                ))
             Foundation.exit(64)
         }
         let socketPath = arguments[0]

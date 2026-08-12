@@ -7,11 +7,13 @@ struct DiagnosticsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(t("Diagnostics", "Диагностика"))
                 .font(.title2.bold())
-            Text(t(
-                "Privacy-safe operational state. Prompts, model responses, tool output, tokens, and credentials are never included.",
-                "Безопасное состояние приложения. Запросы, ответы модели, вывод инструментов, токены и данные входа сюда не попадают."
-            ))
-                .foregroundStyle(.secondary)
+            Text(
+                t(
+                    "Privacy-safe operational state. Prompts, model responses, tool output, tokens, and credentials are never included.",
+                    "Безопасное состояние приложения. Запросы, ответы модели, вывод инструментов, токены и данные входа сюда не попадают."
+                )
+            )
+            .foregroundStyle(.secondary)
             ScrollView {
                 Text(model.diagnostics.snapshot.sanitizedText)
                     .font(.system(.body, design: .monospaced))
@@ -25,17 +27,23 @@ struct DiagnosticsView: View {
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                 Button(t("Choose Codex Binary…", "Выбрать исполняемый файл Codex…")) { model.chooseCodexBinary() }
                 if model.closedLidProtection.helperInstalled {
-                    Button(t("Remove Closed-Lid Helper…", "Удалить Closed-Lid helper…")) { model.removeClosedLidHelper() }
+                    Button(t("Remove Closed-Lid Helper…", "Удалить Closed-Lid helper…")) {
+                        model.removeClosedLidHelper()
+                    }
                 } else {
-                    Button(t("Install Closed-Lid Helper…", "Установить Closed-Lid helper…")) { model.installClosedLidHelper() }
+                    Button(t("Install Closed-Lid Helper…", "Установить Closed-Lid helper…")) {
+                        model.installClosedLidHelper()
+                    }
                 }
                 Spacer()
-                Text(t(
-                    "Managed events and privacy-safe Desktop lifecycle markers are tracked separately.",
-                    "Управляемые события и безопасные маркеры жизненного цикла Desktop отслеживаются отдельно."
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    t(
+                        "Managed events and privacy-safe Desktop lifecycle markers are tracked separately.",
+                        "Управляемые события и безопасные маркеры жизненного цикла Desktop отслеживаются отдельно."
+                    )
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
         .padding(20)

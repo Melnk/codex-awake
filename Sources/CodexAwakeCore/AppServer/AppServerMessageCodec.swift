@@ -10,8 +10,9 @@ public enum AppServerWireMessage: Equatable, Sendable {
 public enum AppServerMessageCodec {
     public static func decode(_ text: String) throws -> AppServerWireMessage {
         guard let data = text.data(using: .utf8),
-              let root = try? JSONDecoder().decode(JSONValue.self, from: data),
-              let object = root.objectValue else {
+            let root = try? JSONDecoder().decode(JSONValue.self, from: data),
+            let object = root.objectValue
+        else {
             throw CodexAwakeError.malformedMessage
         }
 
@@ -36,35 +37,39 @@ public enum AppServerMessageCodec {
     }
 
     public static func request(id: Int, method: String, params: JSONValue = .object([:])) throws -> String {
-        try encode(.object([
-            "id": .number(Double(id)),
-            "method": .string(method),
-            "params": params
-        ]))
+        try encode(
+            .object([
+                "id": .number(Double(id)),
+                "method": .string(method),
+                "params": params,
+            ]))
     }
 
     public static func notification(method: String, params: JSONValue = .object([:])) throws -> String {
-        try encode(.object([
-            "method": .string(method),
-            "params": params
-        ]))
+        try encode(
+            .object([
+                "method": .string(method),
+                "params": params,
+            ]))
     }
 
     public static func methodNotFound(id: Int) throws -> String {
-        try encode(.object([
-            "id": .number(Double(id)),
-            "error": .object([
-                "code": .number(-32601),
-                "message": .string("Method not supported by observer client")
-            ])
-        ]))
+        try encode(
+            .object([
+                "id": .number(Double(id)),
+                "error": .object([
+                    "code": .number(-32601),
+                    "message": .string("Method not supported by observer client"),
+                ]),
+            ]))
     }
 
     public static func response(id: Int, result: JSONValue) throws -> String {
-        try encode(.object([
-            "id": .number(Double(id)),
-            "result": result
-        ]))
+        try encode(
+            .object([
+                "id": .number(Double(id)),
+                "result": result,
+            ]))
     }
 
     public static func event(method: String, params: JSONValue?) -> AppServerEvent {
@@ -97,9 +102,10 @@ public enum AppServerMessageCodec {
 
         case "item/agentMessage/delta":
             guard let threadId,
-                  let turnId = params?["turnId"]?.stringValue,
-                  let itemId = params?["itemId"]?.stringValue,
-                  let delta = params?["delta"]?.stringValue else {
+                let turnId = params?["turnId"]?.stringValue,
+                let itemId = params?["itemId"]?.stringValue,
+                let delta = params?["delta"]?.stringValue
+            else {
                 return .unknown(method: method)
             }
             return .agentMessageDelta(
@@ -111,11 +117,12 @@ public enum AppServerMessageCodec {
 
         case "item/completed":
             guard let threadId,
-                  let turnId = params?["turnId"]?.stringValue,
-                  let item = params?["item"],
-                  item["type"]?.stringValue == "agentMessage",
-                  let itemId = item["id"]?.stringValue,
-                  let text = item["text"]?.stringValue else {
+                let turnId = params?["turnId"]?.stringValue,
+                let item = params?["item"],
+                item["type"]?.stringValue == "agentMessage",
+                let itemId = item["id"]?.stringValue,
+                let text = item["text"]?.stringValue
+            else {
                 return .ignored(method: method)
             }
             return .agentMessageCompleted(
@@ -127,7 +134,8 @@ public enum AppServerMessageCodec {
             )
 
         case "error":
-            let message = params?["error"]?["message"]?.stringValue
+            let message =
+                params?["error"]?["message"]?.stringValue
                 ?? params?["message"]?.stringValue
                 ?? "Codex reported an unknown runtime error."
             return .runtimeError(threadId: threadId, message: String(message.prefix(500)))

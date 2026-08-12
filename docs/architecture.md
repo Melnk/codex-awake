@@ -2,7 +2,7 @@
 
 ## Runtime data flow
 
-`AppModel` is the main-actor UI boundary. It locates the Codex binary, asks `AppServerSupervisor` to launch one owned child, and runs an observer connection through `AppServerClient`. It observes `NSWorkspace` launch/termination notifications for Codex Desktop presence and polls `CodexDesktopRolloutScanner` once per second for active top-level Desktop task lifecycles.
+`AppModel` is the main-actor composition and UI boundary. It coordinates feature components but no longer owns their internal state machines. `CodexChatSession` owns conversation/approval state, `CodexDesktopMonitor` owns `NSWorkspace` observation and rollout polling, and `UserDefaultsAppPreferences` owns typed preference persistence. The model locates the Codex binary, asks `AppServerSupervisor` to launch one owned child, and runs an observer connection through `AppServerClient`.
 
 `UnixWebSocketTransport` implements RFC 6455 client framing and the HTTP Upgrade handshake directly over `AF_UNIX`. It validates `Sec-WebSocket-Accept`, masks client frames, handles ping/pong/close, limits payloads to 16 MiB, and exposes no TCP listener.
 
@@ -25,7 +25,7 @@ Lifecycle events provide low latency. Chat-only item events do not mutate activi
 
 ## Privileged Closed-Lid boundary
 
-The main app never executes `pmset` and never runs as root. `CodexAwakeClosedLidHelper` is a small launch daemon installed into `/Library/PrivilegedHelperTools` with a matching `/Library/LaunchDaemons` plist after an explicit administrator prompt. Its Mach service uses a four-method XPC interface: status, acquire, renew, and release. The daemon's listener requirement is pinned at install time to the main app's exact CDHash; there is no arbitrary command, file, shell, or path parameter.
+The main app never executes `pmset` and never runs as root. `CodexAwakeClosedLidHelper` is a small launch daemon installed into `/Library/PrivilegedHelperTools` with a matching `/Library/LaunchDaemons` plist after an explicit administrator prompt. Its bootstrap, XPC adapter, lease store, validator, and fixed `pmset` adapter are separate components. The Mach service uses a four-method XPC interface: status, acquire, renew, and release. The daemon's listener requirement is pinned at install time to the main app's exact CDHash; there is no arbitrary command, file, shell, or path parameter.
 
 The client lease lasts at most 120 seconds and renews every 30 seconds only while the aggregate power protection is held. On the first lease, the daemon snapshots the prior `disablesleep` setting, persists the restoration data plus expiry timestamps in a root-only file, and invokes the fixed `/usr/bin/pmset -a disablesleep 1` command. Final release, graceful daemon termination, uninstall, or expiry restores the captured setting. Persisted expiries allow a relaunched daemon to recover after a crash without creating an indefinite system policy change.
 

@@ -51,3 +51,7 @@
 ## ADR-013 — Exact client identity for the root helper
 
 **Decision:** the install script writes the installing app's exact CDHash into the launch daemon arguments, and the daemon converts it to an XPC connection signing requirement before accepting clients. Ad-hoc rebuilds therefore require helper reinstallation. The privileged API remains limited to status/acquire/renew/release and never accepts executable paths, shell text, settings names, or values.
+
+## ADR-014 — Feature boundaries and injected persistence
+
+**Decision:** keep `AppModel` as the main-actor composition boundary while moving chat/approval lifecycle, Codex Desktop observation, and typed preference storage into focused components. Domain-facing behavior is exposed through narrow protocols, and tests receive isolated stores/fakes. The root helper likewise separates bootstrap, XPC, validation, lease persistence, and fixed `pmset` execution. This applies the supplied Kotlin review principles as Swift SOLID boundaries without importing framework-specific style rules.

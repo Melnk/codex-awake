@@ -36,10 +36,11 @@ public actor ClosedLidHelperClient: ClosedLidHelperCommunicating {
     }
 
     private func request(
-        _ body: @escaping (
-            ClosedLidHelperXPCProtocol,
-            @escaping (Bool, TimeInterval, String?) -> Void
-        ) -> Void
+        _ body:
+            @escaping (
+                ClosedLidHelperXPCProtocol,
+                @escaping (Bool, TimeInterval, String?) -> Void
+            ) -> Void
     ) async throws -> ClosedLidHelperStatus {
         try await withCheckedThrowingContinuation { continuation in
             let connection = NSXPCConnection(
@@ -66,10 +67,11 @@ public actor ClosedLidHelperClient: ClosedLidHelperCommunicating {
                 if let error, !error.isEmpty {
                     gate.fail(.rejected(String(error.prefix(300))))
                 } else {
-                    gate.succeed(.init(
-                        disablesSleep: enabled,
-                        leaseExpiresAt: expiresAt > 0 ? Date(timeIntervalSince1970: expiresAt) : nil
-                    ))
+                    gate.succeed(
+                        .init(
+                            disablesSleep: enabled,
+                            leaseExpiresAt: expiresAt > 0 ? Date(timeIntervalSince1970: expiresAt) : nil
+                        ))
                 }
             }
         }

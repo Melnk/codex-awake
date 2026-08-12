@@ -70,7 +70,8 @@ public actor AwakeCoordinator {
                 do {
                     try await power.acquire()
                 } catch {
-                    logger.error("Power assertion acquisition failed: \(SafeDisplay.sanitizedError(error), privacy: .public)")
+                    logger.error(
+                        "Power assertion acquisition failed: \(SafeDisplay.sanitizedError(error), privacy: .public)")
                 }
             }
             scheduleRelease(after: reconnectGrace)
@@ -101,7 +102,8 @@ public actor AwakeCoordinator {
         pendingRelease = nil
         latestSnapshot = ActivitySnapshot()
         if autoKeepAwake,
-           codexDesktopActiveCount > 0 || (keepAwakeForCodexDesktop && codexDesktopRunning) {
+            codexDesktopActiveCount > 0 || (keepAwakeForCodexDesktop && codexDesktopRunning)
+        {
             await acquireAssertion()
         } else {
             await power.release()

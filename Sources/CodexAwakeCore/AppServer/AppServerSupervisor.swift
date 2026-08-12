@@ -115,8 +115,9 @@ public actor AppServerSupervisor {
         let delay = min(pow(2.0, Double(restartAttempt - 1)), 30.0)
         try? await Task.sleep(for: .seconds(delay))
         guard !requestedStop,
-              let binaryPath,
-              let runtimeValue else { return }
+            let binaryPath,
+            let runtimeValue
+        else { return }
         do {
             try await start(binaryPath: binaryPath, runtime: runtimeValue)
         } catch {

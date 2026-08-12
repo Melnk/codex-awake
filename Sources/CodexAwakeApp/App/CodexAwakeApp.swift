@@ -94,10 +94,12 @@ private struct CockpitLaunchingMenuBarLabel: View {
 
     var body: some View {
         Image(systemName: symbol)
-            .accessibilityLabel(language.text(
-                "CodexAwake, \(activeCount) active managed Codex threads",
-                "CodexAwake, активных управляемых потоков Codex: \(activeCount)"
-            ))
+            .accessibilityLabel(
+                language.text(
+                    "CodexAwake, \(activeCount) active managed Codex threads",
+                    "CodexAwake, активных управляемых потоков Codex: \(activeCount)"
+                )
+            )
             .task {
                 guard !didRequestInitialWindow else { return }
                 didRequestInitialWindow = true

@@ -35,7 +35,8 @@ final class ProtocolAndLifecycleTests: XCTestCase {
         let collector = EventCollector()
         let client = makeClient(transport: transport, collector: collector)
         try await client.connect()
-        transport.push("{\"method\":\"thread/status/changed\",\"params\":{\"threadId\":\"a\",\"status\":{\"type\":\"active\"}}}")
+        transport.push(
+            "{\"method\":\"thread/status/changed\",\"params\":{\"threadId\":\"a\",\"status\":{\"type\":\"active\"}}}")
         try? await Task.sleep(for: .milliseconds(30))
         let eventCount = await collector.events.count
         XCTAssertEqual(eventCount, 1)
@@ -43,9 +44,10 @@ final class ProtocolAndLifecycleTests: XCTestCase {
     }
 
     func testAgentMessageDeltaDecoding() throws {
-        let message = try AppServerMessageCodec.decode("""
-        {"method":"item/agentMessage/delta","params":{"threadId":"thread-a","turnId":"turn-a","itemId":"item-a","delta":"Hello"}}
-        """)
+        let message = try AppServerMessageCodec.decode(
+            """
+            {"method":"item/agentMessage/delta","params":{"threadId":"thread-a","turnId":"turn-a","itemId":"item-a","delta":"Hello"}}
+            """)
         guard case .notification(let method, let params) = message else {
             return XCTFail("Expected notification")
         }
@@ -65,8 +67,8 @@ final class ProtocolAndLifecycleTests: XCTestCase {
                     "type": .string("agentMessage"),
                     "id": .string("item-a"),
                     "text": .string("Final answer"),
-                    "phase": .string("final_answer")
-                ])
+                    "phase": .string("final_answer"),
+                ]),
             ])
         )
         XCTAssertEqual(
@@ -121,11 +123,13 @@ final class ProtocolAndLifecycleTests: XCTestCase {
             disconnectHandler: { _ in await collector.disconnected() }
         )
         try await client.connect()
-        transport.push("""
-        {"id":91,"method":"item/commandExecution/requestApproval","params":{"threadId":"thread-a","turnId":"turn-a","itemId":"item-a","command":"swift test"}}
-        """)
+        transport.push(
+            """
+            {"id":91,"method":"item/commandExecution/requestApproval","params":{"threadId":"thread-a","turnId":"turn-a","itemId":"item-a","command":"swift test"}}
+            """)
         try? await Task.sleep(for: .milliseconds(30))
-        XCTAssertTrue(transport.sent.contains(where: { $0.contains("\"id\":91") && $0.contains("\"result\":\"accept\"") }))
+        XCTAssertTrue(
+            transport.sent.contains(where: { $0.contains("\"id\":91") && $0.contains("\"result\":\"accept\"") }))
         await client.disconnect()
     }
 
@@ -231,10 +235,11 @@ final class ProtocolAndLifecycleTests: XCTestCase {
     }
 
     func testThreadStatusParsing() {
-        let status = ThreadRuntimeStatus.parse(.object([
-            "type": .string("active"),
-            "activeFlags": .array([.string("waitingOnApproval")])
-        ]))
+        let status = ThreadRuntimeStatus.parse(
+            .object([
+                "type": .string("active"),
+                "activeFlags": .array([.string("waitingOnApproval")]),
+            ]))
         XCTAssertTrue(status.isActive)
         XCTAssertEqual(status.activeFlags, ["waitingOnApproval"])
     }

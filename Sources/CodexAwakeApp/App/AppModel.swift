@@ -1,5 +1,6 @@
 import AppKit
 import CodexAwakeCore
+import Combine
 import Foundation
 import OSLog
 
@@ -24,18 +25,15 @@ final class AppModel: ObservableObject {
     @Published var closedLidProtection = ClosedLidProtectionSnapshot()
     @Published var closedLidActionMessage: String?
     @Published var workspacePath: String?
-    @Published var chatMessages: [CodexChatMessage] = []
-    @Published var chatThreadID: String?
-    @Published var chatTurnID: String?
-    @Published var chatIsSending = false
-    @Published var approvalRequests: [CodexApprovalRequest] = []
     @Published var interfaceTheme: InterfaceTheme
     @Published var appLanguage: AppLanguage
 
     let diagnostics = DiagnosticsStore()
+    let chat: CodexChatSession
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "App")
     private let tracker = ThreadActivityTracker()
-    private let desktopRolloutScanner = CodexDesktopRolloutScanner()
+    private let preferences: any AppPreferencesStoring
+    private let desktopMonitor = CodexDesktopMonitor()
     private let power: PowerProtectionManager
     private let coordinator: AwakeCoordinator
     private let binaryLocator = CodexBinaryLocator()
@@ -47,33 +45,35 @@ final class AppModel: ObservableObject {
     private var client: AppServerClient?
     private var runtime: SocketPathManager.Runtime?
     private var connectionLoopTask: Task<Void, Never>?
-    private var desktopActivityTask: Task<Void, Never>?
     private var closedLidStatusTask: Task<Void, Never>?
-    private var workspaceObserverTokens: [NSObjectProtocol] = []
-    private var codexDesktopLaunchDate: Date?
+    private var chatObservation: AnyCancellable?
     private var isShuttingDown = false
-    private var chatGenerationID: UUID?
-    private var approvalContinuations: [Int: CheckedContinuation<JSONValue, Never>] = [:]
     private var lastEventAt: Date?
     private var lastReconciliationAt: Date?
     private let startedAt = Date()
 
-    init(defaults: UserDefaults = .standard) {
-        let auto = defaults.object(forKey: "AutoKeepAwake") as? Bool ?? true
-        let keepForDesktop = defaults.object(forKey: "KeepAwakeForCodexDesktop") as? Bool ?? true
-        let closedLid = defaults.bool(forKey: "ClosedLidProtectionEnabled")
-        interfaceTheme = InterfaceTheme(
-            rawValue: defaults.string(forKey: "InterfaceTheme") ?? ""
-        ) ?? .light
-        appLanguage = AppLanguage(
-            rawValue: defaults.string(forKey: "AppLanguage") ?? ""
-        ) ?? .systemDefault
+    init(preferences: any AppPreferencesStoring = UserDefaultsAppPreferences()) {
+        self.preferences = preferences
+        let auto = preferences.autoKeepAwake
+        let keepForDesktop = preferences.keepAwakeForCodexDesktop
+        let closedLid = preferences.closedLidProtectionEnabled
+        interfaceTheme =
+            InterfaceTheme(
+                rawValue: preferences.interfaceTheme ?? ""
+            ) ?? .light
+        let selectedLanguage =
+            AppLanguage(
+                rawValue: preferences.appLanguage ?? ""
+            ) ?? .systemDefault
+        appLanguage = selectedLanguage
+        chat = CodexChatSession(language: selectedLanguage)
         autoKeepAwake = auto
         keepAwakeForCodexDesktop = keepForDesktop
         closedLidProtectionEnabled = closedLid
-        firstRunAcknowledged = defaults.bool(forKey: "FirstRunAcknowledged")
-        if let savedWorkspace = defaults.string(forKey: "CodexWorkspacePath"),
-           FileManager.default.fileExists(atPath: savedWorkspace) {
+        firstRunAcknowledged = preferences.firstRunAcknowledged
+        if let savedWorkspace = preferences.workspacePath,
+            FileManager.default.fileExists(atPath: savedWorkspace)
+        {
             workspacePath = savedWorkspace
         } else {
             workspacePath = nil
@@ -86,13 +86,17 @@ final class AppModel: ObservableObject {
             keepAwakeForCodexDesktop: keepForDesktop
         )
         launchAtLogin = launchManager.isEnabled
+        chatObservation = chat.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
     }
 
     func start() {
         guard connectionLoopTask == nil else { return }
         logger.notice("CodexAwake lifecycle started")
-        startCodexDesktopMonitoring()
-        startCodexDesktopActivityMonitoring()
+        desktopMonitor.start { [weak self] snapshot in
+            self?.handleCodexDesktopSnapshot(snapshot)
+        }
         startClosedLidStatusMonitoring()
         Task { await startManagedServer() }
     }
@@ -118,8 +122,9 @@ final class AppModel: ObservableObject {
 
     func stopServer() {
         Task {
-            cancelPendingApprovals()
-            markChatDisconnected(t("The managed Codex server was stopped.", "Управляемый сервер Codex остановлен."))
+            chat.cancelPendingApprovals()
+            chat.markDisconnected(
+                t("The managed Codex server was stopped.", "Управляемый сервер Codex остановлен."))
             connectionLoopTask?.cancel()
             connectionLoopTask = nil
             await client?.disconnect()
@@ -130,8 +135,9 @@ final class AppModel: ObservableObject {
 
     func restartServer() {
         Task {
-            cancelPendingApprovals()
-            markChatDisconnected(t("The managed Codex server is restarting.", "Управляемый сервер Codex перезапускается."))
+            chat.cancelPendingApprovals()
+            chat.markDisconnected(
+                t("The managed Codex server is restarting.", "Управляемый сервер Codex перезапускается."))
             await client?.disconnect()
             client = nil
             do {
@@ -143,7 +149,7 @@ final class AppModel: ObservableObject {
 
     func setAutoKeepAwake(_ enabled: Bool) {
         autoKeepAwake = enabled
-        UserDefaults.standard.set(enabled, forKey: "AutoKeepAwake")
+        preferences.setAutoKeepAwake(enabled)
         Task {
             await coordinator.setAutoKeepAwake(enabled)
             await refreshPublishedState()
@@ -152,16 +158,21 @@ final class AppModel: ObservableObject {
 
     func setInterfaceTheme(_ theme: InterfaceTheme) {
         interfaceTheme = theme
-        UserDefaults.standard.set(theme.rawValue, forKey: "InterfaceTheme")
+        preferences.setInterfaceTheme(theme.rawValue)
     }
 
     func setAppLanguage(_ language: AppLanguage) {
         appLanguage = language
-        UserDefaults.standard.set(language.rawValue, forKey: "AppLanguage")
+        chat.setLanguage(language)
+        preferences.setAppLanguage(language.rawValue)
         if closedLidProtection.leaseActive {
-            closedLidActionMessage = t("Closed-Lid lease active. The display may be closed.", "Аренда Closed-Lid активна. Крышку можно закрыть.")
+            closedLidActionMessage = t(
+                "Closed-Lid lease active. The display may be closed.",
+                "Аренда Closed-Lid активна. Крышку можно закрыть.")
         } else if closedLidProtectionEnabled {
-            closedLidActionMessage = t("Closed-Lid armed; the lease starts with sleep protection.", "Closed-Lid готов; аренда начнётся вместе с защитой от сна.")
+            closedLidActionMessage = t(
+                "Closed-Lid armed; the lease starts with sleep protection.",
+                "Closed-Lid готов; аренда начнётся вместе с защитой от сна.")
         } else {
             closedLidActionMessage = nil
         }
@@ -169,7 +180,7 @@ final class AppModel: ObservableObject {
 
     func setKeepAwakeForCodexDesktop(_ enabled: Bool) {
         keepAwakeForCodexDesktop = enabled
-        UserDefaults.standard.set(enabled, forKey: "KeepAwakeForCodexDesktop")
+        preferences.setKeepAwakeForCodexDesktop(enabled)
         Task {
             await coordinator.setKeepAwakeForCodexDesktop(enabled)
             await refreshPublishedState()
@@ -178,10 +189,15 @@ final class AppModel: ObservableObject {
 
     func setClosedLidProtectionEnabled(_ enabled: Bool) {
         closedLidProtectionEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: "ClosedLidProtectionEnabled")
-        closedLidActionMessage = enabled
-            ? t("Closed-Lid requested. Install the helper if it is not ready.", "Режим закрытой крышки запрошен. Если helper не готов, установите его.")
-            : t("Closed-Lid disabled; normal lid sleep is restored.", "Режим закрытой крышки выключен; обычный сон восстановлен.")
+        preferences.setClosedLidProtectionEnabled(enabled)
+        closedLidActionMessage =
+            enabled
+            ? t(
+                "Closed-Lid requested. Install the helper if it is not ready.",
+                "Режим закрытой крышки запрошен. Если helper не готов, установите его.")
+            : t(
+                "Closed-Lid disabled; normal lid sleep is restored.",
+                "Режим закрытой крышки выключен; обычный сон восстановлен.")
         Task {
             do {
                 try await power.setClosedLidRequested(enabled)
@@ -199,20 +215,28 @@ final class AppModel: ObservableObject {
             resource: "install-closed-lid-helper",
             title: t("Installing CodexAwake Closed-Lid helper", "Установка Closed-Lid helper CodexAwake")
         )
-        closedLidActionMessage = t("Complete the administrator prompt in Terminal, then return here.", "Подтвердите запрос администратора в Терминале, затем вернитесь сюда.")
+        closedLidActionMessage = t(
+            "Complete the administrator prompt in Terminal, then return here.",
+            "Подтвердите запрос администратора в Терминале, затем вернитесь сюда.")
     }
 
     func removeClosedLidHelper() {
         Task {
             closedLidProtectionEnabled = false
-            UserDefaults.standard.set(false, forKey: "ClosedLidProtectionEnabled")
-            try? await power.setClosedLidRequested(false)
+            preferences.setClosedLidProtectionEnabled(false)
+            do {
+                try await power.setClosedLidRequested(false)
+            } catch {
+                record(error)
+            }
             closedLidProtection = await power.refreshClosedLidStatus()
             openClosedLidHelperCommand(
                 resource: "uninstall-closed-lid-helper",
                 title: t("Removing CodexAwake Closed-Lid helper", "Удаление Closed-Lid helper CodexAwake")
             )
-            closedLidActionMessage = t("Complete the administrator prompt in Terminal.", "Подтвердите запрос администратора в Терминале.")
+            closedLidActionMessage = t(
+                "Complete the administrator prompt in Terminal.",
+                "Подтвердите запрос администратора в Терминале.")
             updateDiagnostics()
         }
     }
@@ -229,7 +253,7 @@ final class AppModel: ObservableObject {
 
     func acknowledgeFirstRun() {
         firstRunAcknowledged = true
-        UserDefaults.standard.set(true, forKey: "FirstRunAcknowledged")
+        preferences.setFirstRunAcknowledged(true)
     }
 
     var codexCommand: String? {
@@ -256,7 +280,8 @@ final class AppModel: ObservableObject {
                 appropriateFor: nil,
                 create: true
             ).appendingPathComponent("CodexAwake", isDirectory: true)
-            try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try FileManager.default.createDirectory(
+                at: support, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: support.path)
             let helper = support.appendingPathComponent("Open Managed Codex.command")
             try CodexCommandBuilder.helperContents(binaryPath: codexPath, endpoint: endpoint)
@@ -305,73 +330,44 @@ final class AppModel: ObservableObject {
         }
         if panel.runModal() == .OK, let path = panel.url?.standardizedFileURL.path {
             workspacePath = path
-            UserDefaults.standard.set(path, forKey: "CodexWorkspacePath")
+            preferences.setWorkspacePath(path)
             newChat()
         }
     }
 
     @discardableResult
     func sendPrompt(_ prompt: String) -> Bool {
-        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !chatIsSending else { return false }
         guard let workspacePath, appServerState == .running, let client else {
-            appendSystemMessage(chatUnavailableReason ?? t("Codex is not ready yet.", "Codex пока не готов."))
+            chat.markUnavailable(
+                chatUnavailableReason ?? t("Codex is not ready yet.", "Codex пока не готов."))
             return false
         }
-
-        let generationID = UUID()
-        chatGenerationID = generationID
-        chatIsSending = true
-        chatMessages.append(.init(role: .user, text: text))
-
-        Task {
-            do {
-                var threadID = chatThreadID
-                if threadID == nil {
-                    threadID = try await client.startThread(cwd: workspacePath)
-                    guard chatGenerationID == generationID else { return }
-                    chatThreadID = threadID
-                }
-                guard let threadID else { throw CodexAwakeError.malformedMessage }
-                let turnID = try await client.startTurn(threadId: threadID, text: text, cwd: workspacePath)
-                guard chatGenerationID == generationID else { return }
-                chatTurnID = turnID
-            } catch {
-                guard chatGenerationID == generationID else { return }
-                chatGenerationID = nil
-                chatIsSending = false
-                appendSystemMessage(SafeDisplay.sanitizedError(error))
-            }
-        }
-        return true
+        return chat.send(
+            prompt,
+            client: client,
+            workspacePath: workspacePath,
+            unavailableReason: chatUnavailableReason
+        )
     }
 
     func interruptChat() {
-        guard let client, let threadID = chatThreadID, let turnID = chatTurnID else { return }
-        Task {
-            do {
-                try await client.interruptTurn(threadId: threadID, turnId: turnID)
-            } catch {
-                appendSystemMessage(SafeDisplay.sanitizedError(error))
-            }
-        }
+        guard let client else { return }
+        chat.interrupt(client: client)
     }
 
     func newChat() {
-        if let client, let threadID = chatThreadID, let turnID = chatTurnID {
-            Task { try? await client.interruptTurn(threadId: threadID, turnId: turnID) }
-        }
-        chatGenerationID = nil
-        chatThreadID = nil
-        chatTurnID = nil
-        chatIsSending = false
-        chatMessages.removeAll()
+        chat.reset(client: client)
     }
 
     func resolveApproval(_ request: CodexApprovalRequest, decision: CodexApprovalDecision) {
-        approvalRequests.removeAll { $0.id == request.id }
-        approvalContinuations.removeValue(forKey: request.id)?.resume(returning: .string(decision.rawValue))
+        chat.resolve(request, decision: decision)
     }
+
+    var chatMessages: [CodexChatMessage] { chat.messages }
+    var chatThreadID: String? { chat.threadID }
+    var chatTurnID: String? { chat.turnID }
+    var chatIsSending: Bool { chat.isSending }
+    var approvalRequests: [CodexApprovalRequest] { chat.approvalRequests }
 
     func requestQuit() {
         NSApplication.shared.terminate(nil)
@@ -380,12 +376,10 @@ final class AppModel: ObservableObject {
     func shutdown() async {
         guard !isShuttingDown else { return }
         isShuttingDown = true
-        stopCodexDesktopMonitoring()
-        desktopActivityTask?.cancel()
-        desktopActivityTask = nil
+        desktopMonitor.stop()
         closedLidStatusTask?.cancel()
         closedLidStatusTask = nil
-        cancelPendingApprovals()
+        chat.cancelPendingApprovals()
         connectionLoopTask?.cancel()
         connectionLoopTask = nil
         await client?.disconnect()
@@ -403,16 +397,26 @@ final class AppModel: ObservableObject {
 
     var chatUnavailableReason: String? {
         if workspacePath == nil {
-            return t("Choose a project folder before sending a message.", "Перед отправкой сообщения выберите папку проекта.")
+            return t(
+                "Choose a project folder before sending a message.",
+                "Перед отправкой сообщения выберите папку проекта.")
         }
         if appServerState != .running {
             if codexPath == nil {
-                return t("Codex runtime is not ready. Restart the server or choose a Codex binary in Diagnostics.", "Среда Codex не готова. Перезапустите сервер или выберите исполняемый файл Codex в Диагностике.")
+                return t(
+                    "Codex runtime is not ready. Restart the server or choose a Codex binary in Diagnostics.",
+                    "Среда Codex не готова. Перезапустите сервер или выберите исполняемый файл Codex в Диагностике."
+                )
             }
-            return t("Codex App Server is \(appServerState.rawValue). Wait for READY or press Restart.", "Сервер приложения Codex: \(appServerState.rawValue). Дождитесь статуса «ГОТОВ» или нажмите «Перезапустить».")
+            return t(
+                "Codex App Server is \(appServerState.rawValue). Wait for READY or press Restart.",
+                "Сервер приложения Codex: \(appServerState.rawValue). Дождитесь статуса «ГОТОВ» или нажмите «Перезапустить»."
+            )
         }
         if client == nil {
-            return t("Codex is connecting. Try again in a moment.", "Codex подключается. Повторите через несколько секунд.")
+            return t(
+                "Codex is connecting. Try again in a moment.",
+                "Codex подключается. Повторите через несколько секунд.")
         }
         return nil
     }
@@ -468,7 +472,7 @@ final class AppModel: ObservableObject {
         lastEventAt = Date()
         switch event {
         case .agentMessageDelta, .agentMessageCompleted, .runtimeError, .ignored:
-            handleChatEvent(event)
+            chat.handle(event)
             return
         default:
             break
@@ -477,7 +481,7 @@ final class AppModel: ObservableObject {
         let snapshot = await tracker.apply(event)
         await coordinator.update(snapshot)
         activity = snapshot
-        handleChatEvent(event)
+        chat.handle(event)
         if case .unknown = event {
             if let client { await reconcile(using: client) }
         } else {
@@ -488,8 +492,11 @@ final class AppModel: ObservableObject {
     private func handleDisconnect(_ reason: String) async {
         guard !isShuttingDown else { return }
         lastSafeError = String(reason.prefix(300))
-        cancelPendingApprovals()
-        markChatDisconnected(t("Connection to the managed Codex server was lost.", "Соединение с управляемым сервером Codex потеряно."))
+        chat.cancelPendingApprovals()
+        chat.markDisconnected(
+            t(
+                "Connection to the managed Codex server was lost.",
+                "Соединение с управляемым сервером Codex потеряно."))
         let unknown = await tracker.markConnectionUnknown()
         await coordinator.update(unknown)
         activity = unknown
@@ -500,7 +507,8 @@ final class AppModel: ObservableObject {
     private func reconcile(using client: AppServerClient) async {
         do {
             let reconciled = try await client.reconcileStatuses()
-            let snapshot = await tracker.reconcile(loadedThreadIds: reconciled.loaded, statuses: reconciled.statuses)
+            let snapshot = await tracker.reconcile(
+                loadedThreadIds: reconciled.loaded, statuses: reconciled.statuses)
             lastReconciliationAt = Date()
             activity = snapshot
             await coordinator.update(snapshot)
@@ -526,7 +534,7 @@ final class AppModel: ObservableObject {
 
     private func record(_ error: Error) {
         lastSafeError = SafeDisplay.sanitizedError(error)
-        logger.error("Safe error: \(self.lastSafeError ?? "unknown", privacy: .public)")
+        logger.error("An application operation failed; details are available in the in-app diagnostics")
         updateDiagnostics()
     }
 
@@ -537,7 +545,7 @@ final class AppModel: ObservableObject {
 
     private func updateDiagnostics() {
         var value = DiagnosticsSnapshot()
-        value.appVersion = "1.5.1 (10)"
+        value.appVersion = AppBuildInfo.displayVersion
         value.architecture = Self.architecture
         value.codexPath = codexPath
         value.codexVersion = codexVersion
@@ -558,33 +566,13 @@ final class AppModel: ObservableObject {
         diagnostics.snapshot = value
     }
 
-    private func startCodexDesktopMonitoring() {
-        guard workspaceObserverTokens.isEmpty else {
-            refreshCodexDesktopPresence()
-            return
-        }
-        let center = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
-            let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.refreshCodexDesktopPresence() }
-            }
-            workspaceObserverTokens.append(token)
-        }
-        refreshCodexDesktopPresence()
-    }
-
-    private func startCodexDesktopActivityMonitoring() {
-        guard desktopActivityTask == nil else { return }
-        desktopActivityTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                await self.refreshCodexDesktopActivity()
-                do {
-                    try await Task.sleep(for: .seconds(1))
-                } catch {
-                    return
-                }
-            }
+    private func handleCodexDesktopSnapshot(_ snapshot: CodexDesktopMonitor.Snapshot) {
+        codexDesktopRunning = snapshot.isRunning
+        codexDesktopActiveSessionIDs = snapshot.activeSessionIDs
+        Task {
+            await coordinator.setCodexDesktopRunning(snapshot.isRunning)
+            await coordinator.setCodexDesktopActiveCount(snapshot.activeSessionIDs.count)
+            await refreshPublishedState()
         }
     }
 
@@ -597,9 +585,13 @@ final class AppModel: ObservableObject {
                 if value != closedLidProtection {
                     closedLidProtection = value
                     if value.leaseActive {
-                        closedLidActionMessage = t("Closed-Lid lease active. The display may be closed.", "Аренда Closed-Lid активна. Крышку можно закрыть.")
+                        closedLidActionMessage = t(
+                            "Closed-Lid lease active. The display may be closed.",
+                            "Аренда Closed-Lid активна. Крышку можно закрыть.")
                     } else if value.requested, value.helperInstalled, value.helperReachable {
-                        closedLidActionMessage = t("Closed-Lid armed; the lease starts with sleep protection.", "Closed-Lid готов; аренда начнётся вместе с защитой от сна.")
+                        closedLidActionMessage = t(
+                            "Closed-Lid armed; the lease starts with sleep protection.",
+                            "Closed-Lid готов; аренда начнётся вместе с защитой от сна.")
                     }
                     updateDiagnostics()
                 }
@@ -638,189 +630,17 @@ final class AppModel: ObservableObject {
         appLanguage.text(english, russian)
     }
 
-    private func stopCodexDesktopMonitoring() {
-        let center = NSWorkspace.shared.notificationCenter
-        for token in workspaceObserverTokens { center.removeObserver(token) }
-        workspaceObserverTokens.removeAll()
-    }
-
-    private func refreshCodexDesktopPresence() {
-        let supportedBundleIDs: Set<String> = ["com.openai.codex", "com.openai.chat"]
-        let applications = NSWorkspace.shared.runningApplications.filter { application in
-            application.bundleIdentifier.map(supportedBundleIDs.contains) ?? false
-        }
-        let running = !applications.isEmpty
-        codexDesktopRunning = running
-        codexDesktopLaunchDate = applications.compactMap(\.launchDate).max()
-        if !running {
-            codexDesktopActiveSessionIDs = []
-        }
-        Task {
-            await coordinator.setCodexDesktopRunning(running)
-            if !running { await coordinator.setCodexDesktopActiveCount(0) }
-            await refreshPublishedState()
-        }
-    }
-
-    private func refreshCodexDesktopActivity() async {
-        guard codexDesktopRunning else {
-            if !codexDesktopActiveSessionIDs.isEmpty {
-                codexDesktopActiveSessionIDs = []
-                await coordinator.setCodexDesktopActiveCount(0)
-                await refreshPublishedState()
-            }
-            return
-        }
-
-        let scanner = desktopRolloutScanner
-        let launchDate = codexDesktopLaunchDate
-        let sessionsRoot = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".codex/sessions", isDirectory: true)
-        let sessions = await Task.detached(priority: .utility) {
-            scanner.activeSessions(in: sessionsRoot, desktopLaunchDate: launchDate)
-        }.value
-        guard !Task.isCancelled else { return }
-
-        let ids = Set(sessions.map(\.id))
-        if ids != codexDesktopActiveSessionIDs {
-            codexDesktopActiveSessionIDs = ids
-            await coordinator.setCodexDesktopActiveCount(ids.count)
-            await refreshPublishedState()
-        }
-    }
-
-    private func handleChatEvent(_ event: AppServerEvent) {
-        switch event {
-        case .agentMessageDelta(let threadID, _, let itemID, let delta):
-            guard threadID == chatThreadID else { return }
-            if let index = chatMessages.firstIndex(where: { $0.itemId == itemID }) {
-                chatMessages[index].text += delta
-                chatMessages[index].isStreaming = true
-            } else {
-                chatMessages.append(.init(
-                    role: .assistant,
-                    text: delta,
-                    itemId: itemID,
-                    isStreaming: true
-                ))
-            }
-
-        case .agentMessageCompleted(let threadID, _, let itemID, let text, let phase):
-            guard threadID == chatThreadID else { return }
-            if let index = chatMessages.firstIndex(where: { $0.itemId == itemID }) {
-                chatMessages[index].text = text
-                chatMessages[index].phase = phase
-                chatMessages[index].isStreaming = false
-            } else {
-                chatMessages.append(.init(
-                    role: .assistant,
-                    text: text,
-                    itemId: itemID,
-                    phase: phase
-                ))
-            }
-
-        case .turnCompleted(let key, let status):
-            guard key.threadId == chatThreadID,
-                  chatTurnID == nil || key.turnId == chatTurnID else { return }
-            chatGenerationID = nil
-            chatTurnID = nil
-            chatIsSending = false
-            for index in chatMessages.indices where chatMessages[index].isStreaming {
-                chatMessages[index].isStreaming = false
-            }
-            if let status, status != "completed", status != "interrupted" {
-                appendSystemMessage(t("Codex turn ended with status: \(status).", "Ход Codex завершён со статусом: \(status)."))
-            }
-
-        case .runtimeError(let threadID, let message):
-            guard threadID == nil || threadID == chatThreadID else { return }
-            appendSystemMessage(message)
-
-        default:
-            break
-        }
-    }
-
     private func handleServerRequest(_ request: AppServerServerRequest) async -> JSONValue? {
-        let kind: CodexApprovalKind
-        switch request.method {
-        case "item/commandExecution/requestApproval": kind = .command
-        case "item/fileChange/requestApproval": kind = .fileChange
-        default: return nil
-        }
-
-        let approval = CodexApprovalRequest(
-            id: request.id,
-            kind: kind,
-            title: approvalTitle(kind: kind, params: request.params),
-            detail: approvalDetail(kind: kind, params: request.params),
-            threadId: request.params?["threadId"]?.stringValue,
-            turnId: request.params?["turnId"]?.stringValue
-        )
-        return await withCheckedContinuation { continuation in
-            approvalRequests.append(approval)
-            approvalContinuations[request.id] = continuation
-        }
-    }
-
-    private func approvalTitle(kind: CodexApprovalKind, params: JSONValue?) -> String {
-        if let host = params?["networkApprovalContext"]?["host"]?.stringValue {
-            return t("Allow network access to \(host)?", "Разрешить сетевой доступ к \(host)?")
-        }
-        return kind == .command
-            ? t("Allow this command?", "Разрешить эту команду?")
-            : t("Allow these file changes?", "Разрешить эти изменения файлов?")
-    }
-
-    private func approvalDetail(kind: CodexApprovalKind, params: JSONValue?) -> String {
-        if let reason = params?["reason"]?.stringValue, !reason.isEmpty {
-            return String(reason.prefix(600))
-        }
-        if kind == .command {
-            if let command = params?["command"]?.stringValue {
-                return String(command.prefix(600))
-            }
-            if let command = params?["command"]?.arrayValue?.compactMap(\.stringValue), !command.isEmpty {
-                return String(command.joined(separator: " ").prefix(600))
-            }
-            return t("Codex wants to run a command in the selected workspace.", "Codex хочет выполнить команду в выбранном проекте.")
-        }
-        if let root = params?["grantRoot"]?.stringValue {
-            return t("Codex wants to write inside \(root).", "Codex хочет записать данные в \(root).")
-        }
-        return t("Codex wants to apply file changes in the selected workspace.", "Codex хочет изменить файлы в выбранном проекте.")
-    }
-
-    private func cancelPendingApprovals() {
-        let continuations = approvalContinuations.values
-        approvalContinuations.removeAll()
-        approvalRequests.removeAll()
-        for continuation in continuations {
-            continuation.resume(returning: .string(CodexApprovalDecision.cancel.rawValue))
-        }
-    }
-
-    private func markChatDisconnected(_ message: String) {
-        guard chatIsSending else { return }
-        chatGenerationID = nil
-        chatTurnID = nil
-        chatIsSending = false
-        appendSystemMessage(message)
-    }
-
-    private func appendSystemMessage(_ text: String) {
-        guard chatMessages.last?.role != .system || chatMessages.last?.text != text else { return }
-        chatMessages.append(.init(role: .system, text: String(text.prefix(500))))
+        await chat.handleServerRequest(request)
     }
 
     private static var architecture: String {
         #if arch(arm64)
-        return "arm64"
+            return "arm64"
         #elseif arch(x86_64)
-        return "x86_64"
+            return "x86_64"
         #else
-        return "unknown"
+            return "unknown"
         #endif
     }
 }

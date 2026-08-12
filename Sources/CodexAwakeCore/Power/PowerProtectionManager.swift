@@ -1,6 +1,12 @@
 import Foundation
 
-public actor PowerProtectionManager: PowerAssertionControlling {
+public protocol PowerProtectionControlling: PowerAssertionControlling {
+    func setClosedLidRequested(_ enabled: Bool) async throws
+    func refreshClosedLidStatus() async -> ClosedLidProtectionSnapshot
+    func closedLidSnapshot() async -> ClosedLidProtectionSnapshot
+}
+
+public actor PowerProtectionManager: PowerProtectionControlling {
     private let idle: any PowerAssertionControlling
     private let closedLid: ClosedLidLeaseManager
     private var held = false

@@ -1,0 +1,97 @@
+import Foundation
+
+public protocol AppPreferencesStoring: Sendable {
+    var autoKeepAwake: Bool { get }
+    var keepAwakeForCodexDesktop: Bool { get }
+    var closedLidProtectionEnabled: Bool { get }
+    var firstRunAcknowledged: Bool { get }
+    var interfaceTheme: String? { get }
+    var appLanguage: String? { get }
+    var workspacePath: String? { get }
+
+    func setAutoKeepAwake(_ enabled: Bool)
+    func setKeepAwakeForCodexDesktop(_ enabled: Bool)
+    func setClosedLidProtectionEnabled(_ enabled: Bool)
+    func setFirstRunAcknowledged(_ acknowledged: Bool)
+    func setInterfaceTheme(_ theme: String)
+    func setAppLanguage(_ language: String)
+    func setWorkspacePath(_ path: String?)
+}
+
+public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked Sendable {
+    private enum Key {
+        static let autoKeepAwake = "AutoKeepAwake"
+        static let keepAwakeForCodexDesktop = "KeepAwakeForCodexDesktop"
+        static let closedLidProtectionEnabled = "ClosedLidProtectionEnabled"
+        static let firstRunAcknowledged = "FirstRunAcknowledged"
+        static let interfaceTheme = "InterfaceTheme"
+        static let appLanguage = "AppLanguage"
+        static let workspacePath = "CodexWorkspacePath"
+    }
+
+    private let defaults: UserDefaults
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    public var autoKeepAwake: Bool {
+        defaults.object(forKey: Key.autoKeepAwake) as? Bool ?? true
+    }
+
+    public var keepAwakeForCodexDesktop: Bool {
+        defaults.object(forKey: Key.keepAwakeForCodexDesktop) as? Bool ?? true
+    }
+
+    public var closedLidProtectionEnabled: Bool {
+        defaults.bool(forKey: Key.closedLidProtectionEnabled)
+    }
+
+    public var firstRunAcknowledged: Bool {
+        defaults.bool(forKey: Key.firstRunAcknowledged)
+    }
+
+    public var interfaceTheme: String? {
+        defaults.string(forKey: Key.interfaceTheme)
+    }
+
+    public var appLanguage: String? {
+        defaults.string(forKey: Key.appLanguage)
+    }
+
+    public var workspacePath: String? {
+        defaults.string(forKey: Key.workspacePath)
+    }
+
+    public func setAutoKeepAwake(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.autoKeepAwake)
+    }
+
+    public func setKeepAwakeForCodexDesktop(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.keepAwakeForCodexDesktop)
+    }
+
+    public func setClosedLidProtectionEnabled(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.closedLidProtectionEnabled)
+    }
+
+    public func setFirstRunAcknowledged(_ acknowledged: Bool) {
+        defaults.set(acknowledged, forKey: Key.firstRunAcknowledged)
+    }
+
+    public func setInterfaceTheme(_ theme: String) {
+        defaults.set(theme, forKey: Key.interfaceTheme)
+    }
+
+    public func setAppLanguage(_ language: String) {
+        defaults.set(language, forKey: Key.appLanguage)
+    }
+
+    public func setWorkspacePath(_ path: String?) {
+        if let path {
+            defaults.set(path, forKey: Key.workspacePath)
+        } else {
+            defaults.removeObject(forKey: Key.workspacePath)
+        }
+    }
+}

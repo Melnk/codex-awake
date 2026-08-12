@@ -35,7 +35,11 @@ public final class UnixWebSocketTransport: LocalWebSocketTransport, @unchecked S
 
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
-        let addressLength = MemoryLayout.offset(of: \sockaddr_un.sun_path)! + pathBytes.count + 1
+        guard let sunPathOffset = MemoryLayout.offset(of: \sockaddr_un.sun_path) else {
+            Darwin.close(fd)
+            throw CodexAwakeError.invalidSocket("sockaddr_un layout is unavailable")
+        }
+        let addressLength = sunPathOffset + pathBytes.count + 1
         address.sun_len = UInt8(addressLength)
         withUnsafeMutableBytes(of: &address.sun_path) { buffer in
             buffer.initializeMemory(as: UInt8.self, repeating: 0)
@@ -129,7 +133,7 @@ public final class UnixWebSocketTransport: LocalWebSocketTransport, @unchecked S
             "Sec-WebSocket-Key: \(key)",
             "Sec-WebSocket-Version: 13",
             "",
-            ""
+            "",
         ].joined(separator: "\r\n")
         try writeAll(fd: fd, bytes: Array(request.utf8))
 
@@ -139,11 +143,13 @@ public final class UnixWebSocketTransport: LocalWebSocketTransport, @unchecked S
             response += try readExactly(fd: fd, count: 1)
         }
         guard let headers = String(bytes: response, encoding: .utf8),
-              headers.hasPrefix("HTTP/1.1 101") || headers.hasPrefix("HTTP/1.0 101") else {
+            headers.hasPrefix("HTTP/1.1 101") || headers.hasPrefix("HTTP/1.0 101")
+        else {
             throw CodexAwakeError.connectionFailed("Unix WebSocket upgrade was rejected")
         }
 
-        let expected = Data(Insecure.SHA1.hash(data: Data((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8))).base64EncodedString()
+        let expected = Data(Insecure.SHA1.hash(data: Data((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8)))
+            .base64EncodedString()
         let acceptLine = headers.split(separator: "\r\n").first {
             $0.lowercased().hasPrefix("sec-websocket-accept:")
         }
@@ -182,8 +188,11 @@ public final class UnixWebSocketTransport: LocalWebSocketTransport, @unchecked S
         var result = [UInt8](repeating: 0, count: count)
         var offset = 0
         while offset < count {
-            let readCount = result.withUnsafeMutableBytes { buffer in
-                Darwin.read(fd, buffer.baseAddress!.advanced(by: offset), count - offset)
+            let readCount = try result.withUnsafeMutableBytes { buffer in
+                guard let baseAddress = buffer.baseAddress else {
+                    throw CodexAwakeError.connectionFailed("Unix socket read buffer is unavailable")
+                }
+                return Darwin.read(fd, baseAddress.advanced(by: offset), count - offset)
             }
             if readCount == 0 { throw CodexAwakeError.connectionFailed("Unix socket closed") }
             if readCount < 0 {
@@ -198,8 +207,11 @@ public final class UnixWebSocketTransport: LocalWebSocketTransport, @unchecked S
     private func writeAll(fd: Int32, bytes: [UInt8]) throws {
         var offset = 0
         while offset < bytes.count {
-            let written = bytes.withUnsafeBytes { buffer in
-                Darwin.write(fd, buffer.baseAddress!.advanced(by: offset), bytes.count - offset)
+            let written = try bytes.withUnsafeBytes { buffer in
+                guard let baseAddress = buffer.baseAddress else {
+                    throw CodexAwakeError.connectionFailed("Unix socket write buffer is unavailable")
+                }
+                return Darwin.write(fd, baseAddress.advanced(by: offset), bytes.count - offset)
             }
             if written < 0 {
                 if errno == EINTR { continue }

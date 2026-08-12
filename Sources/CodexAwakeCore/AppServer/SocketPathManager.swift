@@ -93,9 +93,10 @@ public struct SocketPathManager: @unchecked Sendable {
     private func validateRuntimeDirectory(_ url: URL) throws {
         var info = stat()
         guard lstat(url.path, &info) == 0,
-              (info.st_mode & S_IFMT) == S_IFDIR,
-              info.st_uid == getuid(),
-              (info.st_mode & 0o077) == 0 else {
+            (info.st_mode & S_IFMT) == S_IFDIR,
+            info.st_uid == getuid(),
+            (info.st_mode & 0o077) == 0
+        else {
             throw CodexAwakeError.invalidSocket("runtime directory ownership or permissions are unsafe")
         }
     }
@@ -117,7 +118,8 @@ public struct SocketPathManager: @unchecked Sendable {
 
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
-        let length = MemoryLayout.offset(of: \sockaddr_un.sun_path)! + pathBytes.count + 1
+        guard let sunPathOffset = MemoryLayout.offset(of: \sockaddr_un.sun_path) else { return true }
+        let length = sunPathOffset + pathBytes.count + 1
         address.sun_len = UInt8(length)
         withUnsafeMutableBytes(of: &address.sun_path) { buffer in
             buffer.initializeMemory(as: UInt8.self, repeating: 0)
