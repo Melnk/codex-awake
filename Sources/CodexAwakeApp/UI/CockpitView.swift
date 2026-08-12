@@ -107,6 +107,7 @@ struct CockpitView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 powerControl
+                powerModesControl
 
                 HStack(spacing: 10) {
                     InstrumentCard(
@@ -286,6 +287,48 @@ struct CockpitView: View {
         }
     }
 
+    private var powerModesControl: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(t("PROTECTION MODES", "РЕЖИМЫ ЗАЩИТЫ"))
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .tracking(1.4)
+                .foregroundStyle(CockpitPalette.muted)
+
+            PowerModeToggle(
+                title: t("Keep Mac awake", "Не давать Mac уснуть"),
+                subtitle: t("Background work keeps running", "Фоновые задачи продолжат работать"),
+                icon: "moon.zzz",
+                accent: model.powerAssertions.systemSleepPrevented ? CockpitPalette.ice : CockpitPalette.muted,
+                isOn: Binding(
+                    get: { model.preventSystemSleep },
+                    set: { model.setPreventSystemSleep($0) }
+                )
+            )
+
+            PowerModeToggle(
+                title: t("Keep display on", "Не выключать экран"),
+                subtitle: t("Prevents display dimming and sleep", "Экран не погаснет и не перейдёт в сон"),
+                icon: "display",
+                accent: model.powerAssertions.displaySleepPrevented ? CockpitPalette.ice : CockpitPalette.muted,
+                isOn: Binding(
+                    get: { model.preventDisplaySleep },
+                    set: { model.setPreventDisplaySleep($0) }
+                )
+            )
+
+            PowerModeToggle(
+                title: t("Launch at login", "Запускать при входе"),
+                subtitle: launchAtLoginSubtitle,
+                icon: "person.crop.circle.badge.checkmark",
+                accent: model.launchAtLogin ? CockpitPalette.ice : CockpitPalette.muted,
+                isOn: Binding(
+                    get: { model.launchAtLogin },
+                    set: { model.setLaunchAtLogin($0) }
+                )
+            )
+        }
+    }
+
     private var externalChatGPTNotice: some View {
         HStack(alignment: .top, spacing: 9) {
             Image(systemName: model.codexDesktopRunning ? "dot.radiowaves.left.and.right" : "power")
@@ -347,7 +390,7 @@ struct CockpitView: View {
                     }
                     .buttonStyle(CockpitSecondaryButtonStyle())
 
-                    Button(t("Update for this version…", "Обновить для этой версии…")) {
+                    Button(t("Repair / Update…", "Восстановить / обновить…")) {
                         model.installClosedLidHelper()
                     }
                     .buttonStyle(CockpitSecondaryButtonStyle())
@@ -611,6 +654,22 @@ struct CockpitView: View {
                 "Closed-lid mode is active. You can close your MacBook.",
                 "Режим закрытой крышки активен. MacBook можно закрыть.")
         }
+        if model.assertionHeld, model.powerAssertions.systemSleepPrevented,
+            !model.powerAssertions.displaySleepPrevented
+        {
+            return t(
+                "Background work continues; the display may turn off normally.",
+                "Фоновая работа продолжится; экран может выключиться как обычно."
+            )
+        }
+        if model.assertionHeld, model.powerAssertions.displaySleepPrevented,
+            !model.powerAssertions.systemSleepPrevented
+        {
+            return t(
+                "The display stays on while Codex protection is active.",
+                "Экран останется включённым, пока активна защита Codex."
+            )
+        }
         if model.assertionHeld, !model.codexDesktopActiveSessionIDs.isEmpty {
             return t("An active Codex session is protected from sleep.", "Активная сессия Codex защищена от сна.")
         }
@@ -626,8 +685,20 @@ struct CockpitView: View {
 
     private var powerHeadline: String {
         guard model.autoKeepAwake else { return t("Protection is paused", "Защита приостановлена") }
+        if model.closedLidProtection.leaseActive {
+            return t("Closed-lid protection active", "Защита закрытой крышки активна")
+        }
         if model.assertionHeld {
-            return t("Mac and display stay awake", "Mac и экран не уснут")
+            if model.powerAssertions.systemSleepPrevented, model.powerAssertions.displaySleepPrevented {
+                return t("Mac and display stay awake", "Mac и экран не уснут")
+            }
+            if model.powerAssertions.systemSleepPrevented {
+                return t("Mac stays awake", "Mac не уснёт")
+            }
+            return t("Display stays on", "Экран не погаснет")
+        }
+        if !model.preventSystemSleep, !model.preventDisplaySleep {
+            return t("Choose a protection mode", "Выберите режим защиты")
         }
         return t("Protection is ready", "Защита готова")
     }
@@ -646,12 +717,25 @@ struct CockpitView: View {
             return t("One-time setup required", "Нужна однократная настройка")
         }
         if !model.closedLidProtection.helperReachable {
-            return t("A quick update is required", "Требуется быстрое обновление")
+            return t("Reconnecting automatically", "Автоматическое переподключение")
         }
         if model.closedLidProtectionEnabled {
             return t("Ready — starts with protected work", "Готов — включится при защищённой работе")
         }
         return t("Off — closing the lid sleeps normally", "Выключен — при закрытии крышки Mac уснёт")
+    }
+
+    private var launchAtLoginSubtitle: String {
+        switch model.launchAtLoginState {
+        case .enabled:
+            t("Starts automatically after sign-in", "Автоматически запускается после входа")
+        case .disabled:
+            t("Start CodexAwake manually", "CodexAwake запускается вручную")
+        case .requiresApproval:
+            t("Allow it in System Settings > Login Items", "Разрешите в Настройках > Объекты входа")
+        case .unavailable:
+            t("Move the app to Applications first", "Сначала перенесите приложение в «Программы»")
+        }
     }
 
     private var serverAccent: Color {
@@ -947,6 +1031,42 @@ private struct ThinkingIndicator: View {
             Spacer()
         }
         .padding(.horizontal, 10)
+    }
+}
+
+private struct PowerModeToggle: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let accent: Color
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            HStack(spacing: 11) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 24, height: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(CockpitPalette.silver)
+                    Text(subtitle)
+                        .font(.system(size: 9))
+                        .foregroundStyle(CockpitPalette.muted)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 8)
+            }
+            .contentShape(Rectangle())
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .padding(12)
+        .background(CockpitPalette.panelRaised.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CockpitPalette.separator.opacity(0.55)))
+        .accessibilityHint(subtitle)
     }
 }
 

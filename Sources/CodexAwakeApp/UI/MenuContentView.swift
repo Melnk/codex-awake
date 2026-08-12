@@ -11,7 +11,8 @@ struct MenuContentView: View {
         Text("Codex: \(model.codexVersion ?? t("Not found", "Не найден"))")
         Text("Codex Desktop: \(model.codexDesktopRunning ? t("Running", "Запущен") : t("Not Running", "Не запущен"))")
         Text("\(t("Active sessions", "Активные сессии")): \(model.totalActiveSessionCount)")
-        Text("\(t("Keep Awake", "Защита от сна")): \(model.assertionHeld ? t("ON", "ВКЛ") : t("OFF", "ВЫКЛ"))")
+        Text("\(t("System sleep", "Системный сон")): \(systemSleepStatus)")
+        Text("\(t("Display sleep", "Выключение экрана")): \(displaySleepStatus)")
         Text("\(t("Closed-Lid", "Закрытая крышка")): \(closedLidMenuStatus)")
 
         if model.activity.certainty == .unknownReconnecting {
@@ -82,6 +83,18 @@ struct MenuContentView: View {
                 set: { model.setAutoKeepAwake($0) }
             ))
         Toggle(
+            t("Prevent Mac Sleep", "Не давать Mac уснуть"),
+            isOn: Binding(
+                get: { model.preventSystemSleep },
+                set: { model.setPreventSystemSleep($0) }
+            ))
+        Toggle(
+            t("Keep Display On", "Не выключать экран"),
+            isOn: Binding(
+                get: { model.preventDisplaySleep },
+                set: { model.setPreventDisplaySleep($0) }
+            ))
+        Toggle(
             t("Keep Awake while Codex App is Running", "Не давать Mac уснуть, пока открыт Codex"),
             isOn: Binding(
                 get: { model.keepAwakeForCodexDesktop },
@@ -103,7 +116,7 @@ struct MenuContentView: View {
                 model.retryClosedLidHelperConnection()
             }
             .disabled(model.closedLidHelperActionInProgress)
-            Button(t("Update Helper for This App Version…", "Обновить helper для этой версии…")) {
+            Button(t("Repair / Update Closed-Lid Helper…", "Восстановить / обновить Closed-Lid helper…")) {
                 model.installClosedLidHelper()
             }
             .disabled(model.closedLidHelperActionInProgress)
@@ -116,6 +129,11 @@ struct MenuContentView: View {
                 get: { model.launchAtLogin },
                 set: { model.setLaunchAtLogin($0) }
             ))
+        if model.launchAtLoginState == .requiresApproval {
+            Text(t("Approve in System Settings > Login Items", "Разрешите в Настройках > Объекты входа"))
+        } else if model.launchAtLoginState == .unavailable {
+            Text(t("Move CodexAwake to Applications first", "Сначала перенесите CodexAwake в «Программы»"))
+        }
 
         Picker(
             t("Appearance", "Оформление"),
@@ -169,8 +187,18 @@ struct MenuContentView: View {
     private var closedLidMenuStatus: String {
         if model.closedLidProtection.leaseActive { return t("Lease Active", "Активен") }
         if !model.closedLidProtection.helperInstalled { return t("Helper Required", "Нужен helper") }
-        if !model.closedLidProtection.helperReachable { return t("Helper Needs Update", "Нужно обновление helper") }
+        if !model.closedLidProtection.helperReachable { return t("Reconnecting", "Переподключение") }
         return model.closedLidProtectionEnabled ? t("Armed", "Готов") : t("Off", "Выключен")
+    }
+
+    private var systemSleepStatus: String {
+        if model.powerAssertions.systemSleepPrevented { return t("BLOCKED", "ЗАБЛОКИРОВАН") }
+        return model.preventSystemSleep ? t("Ready", "Готов") : t("Allowed", "Разрешён")
+    }
+
+    private var displaySleepStatus: String {
+        if model.powerAssertions.displaySleepPrevented { return t("BLOCKED", "ЗАБЛОКИРОВАНО") }
+        return model.preventDisplaySleep ? t("Ready", "Готово") : t("Allowed", "Разрешено")
     }
 
     private var appServerStatus: String {

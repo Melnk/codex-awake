@@ -2,16 +2,6 @@ import CodexAwakeCore
 import Darwin
 import Foundation
 
-func validatedClientHash(arguments: [String]) throws -> String {
-    guard arguments.count == 3, arguments[1] == "--client-cdhash" else {
-        throw ClosedLidDaemonError.invalidClientHash
-    }
-    let value = arguments[2].lowercased()
-    let valid = value.count == 40 && value.allSatisfy(\.isHexDigit)
-    guard valid else { throw ClosedLidDaemonError.invalidClientHash }
-    return value
-}
-
 guard geteuid() == 0 else {
     FileHandle.standardError.write(Data("Closed-Lid helper must run as root\n".utf8))
     exit(EXIT_FAILURE)
@@ -28,12 +18,14 @@ if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--recover" {
 }
 
 do {
-    let clientHash = try validatedClientHash(arguments: CommandLine.arguments)
+    let clientRequirement = try ClosedLidClientAuthorization.codeSigningRequirement(
+        arguments: CommandLine.arguments
+    )
     let store = LeaseStore()
     let service = HelperService(store: store)
     let delegate = ListenerDelegate(service: service)
     let listener = NSXPCListener(machServiceName: ClosedLidHelperConstants.machServiceName)
-    listener.setConnectionCodeSigningRequirement("cdhash H\"\(clientHash)\"")
+    listener.setConnectionCodeSigningRequirement(clientRequirement)
     listener.delegate = delegate
 
     signal(SIGTERM, SIG_IGN)

@@ -2,6 +2,8 @@ import Foundation
 
 public protocol AppPreferencesStoring: Sendable {
     var autoKeepAwake: Bool { get }
+    var preventSystemSleep: Bool { get }
+    var preventDisplaySleep: Bool { get }
     var keepAwakeForCodexDesktop: Bool { get }
     var closedLidProtectionEnabled: Bool { get }
     var firstRunAcknowledged: Bool { get }
@@ -10,6 +12,8 @@ public protocol AppPreferencesStoring: Sendable {
     var workspacePath: String? { get }
 
     func setAutoKeepAwake(_ enabled: Bool)
+    func setPreventSystemSleep(_ enabled: Bool)
+    func setPreventDisplaySleep(_ enabled: Bool)
     func setKeepAwakeForCodexDesktop(_ enabled: Bool)
     func setClosedLidProtectionEnabled(_ enabled: Bool)
     func setFirstRunAcknowledged(_ acknowledged: Bool)
@@ -21,6 +25,8 @@ public protocol AppPreferencesStoring: Sendable {
 public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked Sendable {
     private enum Key {
         static let autoKeepAwake = "AutoKeepAwake"
+        static let preventSystemSleep = "PreventSystemSleep"
+        static let preventDisplaySleep = "PreventDisplaySleep"
         static let keepAwakeForCodexDesktop = "KeepAwakeForCodexDesktop"
         static let closedLidProtectionEnabled = "ClosedLidProtectionEnabled"
         static let firstRunAcknowledged = "FirstRunAcknowledged"
@@ -37,6 +43,14 @@ public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked
 
     public var autoKeepAwake: Bool {
         defaults.object(forKey: Key.autoKeepAwake) as? Bool ?? true
+    }
+
+    public var preventSystemSleep: Bool {
+        defaults.object(forKey: Key.preventSystemSleep) as? Bool ?? true
+    }
+
+    public var preventDisplaySleep: Bool {
+        defaults.object(forKey: Key.preventDisplaySleep) as? Bool ?? true
     }
 
     public var keepAwakeForCodexDesktop: Bool {
@@ -65,6 +79,14 @@ public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked
 
     public func setAutoKeepAwake(_ enabled: Bool) {
         defaults.set(enabled, forKey: Key.autoKeepAwake)
+    }
+
+    public func setPreventSystemSleep(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.preventSystemSleep)
+    }
+
+    public func setPreventDisplaySleep(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.preventDisplaySleep)
     }
 
     public func setKeepAwakeForCodexDesktop(_ enabled: Bool) {

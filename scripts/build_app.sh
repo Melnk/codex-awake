@@ -16,6 +16,7 @@ swift build --disable-sandbox --configuration "$CONFIGURATION" --product CodexAw
 BIN_DIR="$(swift build --disable-sandbox --configuration "$CONFIGURATION" --show-bin-path)"
 APP="$PROJECT_ROOT/dist/CodexAwake.app"
 HELPER_LABEL="com.melnikoleg.CodexAwake.ClosedLidHelper"
+SIGNING_IDENTITY="${CODESIGN_IDENTITY:--}"
 
 if [[ -e "$APP" ]]; then
     rm -rf "$APP"
@@ -29,7 +30,12 @@ install -m 0644 "$PROJECT_ROOT/Resources/$HELPER_LABEL.plist" "$APP/Contents/Res
 install -m 0755 "$PROJECT_ROOT/Resources/install-closed-lid-helper.sh" "$APP/Contents/Resources/install-closed-lid-helper.sh"
 install -m 0755 "$PROJECT_ROOT/Resources/uninstall-closed-lid-helper.sh" "$APP/Contents/Resources/uninstall-closed-lid-helper.sh"
 
-codesign --force --sign - --timestamp=none --identifier "$HELPER_LABEL" "$APP/Contents/Library/PrivilegedHelperTools/$HELPER_LABEL"
-codesign --force --sign - --timestamp=none "$APP"
+if [[ "$SIGNING_IDENTITY" == "-" ]]; then
+    codesign --force --sign - --timestamp=none --identifier "$HELPER_LABEL" "$APP/Contents/Library/PrivilegedHelperTools/$HELPER_LABEL"
+    codesign --force --sign - --timestamp=none "$APP"
+else
+    codesign --force --sign "$SIGNING_IDENTITY" --options runtime --timestamp --identifier "$HELPER_LABEL" "$APP/Contents/Library/PrivilegedHelperTools/$HELPER_LABEL"
+    codesign --force --sign "$SIGNING_IDENTITY" --options runtime --timestamp "$APP"
+fi
 codesign --verify --deep --strict "$APP"
 echo "Built: $APP"

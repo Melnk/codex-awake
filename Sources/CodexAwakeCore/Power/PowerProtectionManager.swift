@@ -1,6 +1,8 @@
 import Foundation
 
 public protocol PowerProtectionControlling: PowerAssertionControlling {
+    func setAssertionConfiguration(_ configuration: PowerAssertionConfiguration) async throws
+    func assertionSnapshot() async -> PowerAssertionSnapshot
     func setClosedLidRequested(_ enabled: Bool) async throws
     func refreshClosedLidStatus(retryIfNeeded: Bool) async -> ClosedLidProtectionSnapshot
     func closedLidSnapshot() async -> ClosedLidProtectionSnapshot
@@ -13,13 +15,13 @@ extension PowerProtectionControlling {
 }
 
 public actor PowerProtectionManager: PowerProtectionControlling {
-    private let idle: any PowerAssertionControlling
+    private let idle: any PowerAssertionConfiguring
     private let closedLid: ClosedLidLeaseManager
     private var held = false
     private var closedLidRequested: Bool
 
     public init(
-        idle: any PowerAssertionControlling = PowerAssertionManager(),
+        idle: any PowerAssertionConfiguring = PowerAssertionManager(),
         closedLid: ClosedLidLeaseManager = ClosedLidLeaseManager(),
         closedLidRequested: Bool = false
     ) {
@@ -46,6 +48,14 @@ public actor PowerProtectionManager: PowerProtectionControlling {
 
     public func assertionIsHeld() async -> Bool {
         await idle.assertionIsHeld()
+    }
+
+    public func setAssertionConfiguration(_ configuration: PowerAssertionConfiguration) async throws {
+        try await idle.setConfiguration(configuration)
+    }
+
+    public func assertionSnapshot() async -> PowerAssertionSnapshot {
+        await idle.assertionSnapshot()
     }
 
     public func setClosedLidRequested(_ enabled: Bool) async throws {

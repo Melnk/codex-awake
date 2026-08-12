@@ -1,10 +1,11 @@
 import CodexAwakeCore
 import Foundation
 
-actor MockPowerAssertionController: PowerAssertionControlling {
+actor MockPowerAssertionController: PowerAssertionConfiguring {
     private(set) var acquireCount = 0
     private(set) var releaseCount = 0
     private var held = false
+    private var configuration = PowerAssertionConfiguration()
 
     func acquire() throws {
         guard !held else { return }
@@ -19,6 +20,22 @@ actor MockPowerAssertionController: PowerAssertionControlling {
     }
 
     func assertionIsHeld() -> Bool { held }
+
+    func setConfiguration(_ configuration: PowerAssertionConfiguration) {
+        self.configuration = configuration
+        if held, !configuration.preventSystemSleep, !configuration.preventDisplaySleep {
+            held = false
+            releaseCount += 1
+        }
+    }
+
+    func assertionSnapshot() -> PowerAssertionSnapshot {
+        PowerAssertionSnapshot(
+            protectionRequested: held,
+            systemSleepPrevented: held && configuration.preventSystemSleep,
+            displaySleepPrevented: held && configuration.preventDisplaySleep
+        )
+    }
 }
 
 actor ManualSleeper: AsyncSleeping {

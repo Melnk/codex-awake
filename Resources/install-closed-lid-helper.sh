@@ -27,11 +27,19 @@ if [[ ! "$CLIENT_CDHASH" =~ ^[0-9a-fA-F]{40}$ ]]; then
     echo "Unable to determine the authorized CodexAwake code hash." >&2
     exit 65
 fi
+CLIENT_TEAM_ID="$(/usr/bin/codesign -dvvv "$APP_ROOT" 2>&1 | /usr/bin/awk -F= '/^TeamIdentifier=/{print $2; exit}')"
+CLIENT_MODE="--client-cdhash"
+CLIENT_IDENTITY="$CLIENT_CDHASH"
+if [[ "$CLIENT_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+    CLIENT_MODE="--client-team-id"
+    CLIENT_IDENTITY="$CLIENT_TEAM_ID"
+fi
 
 TEMP_PLIST="$(/usr/bin/mktemp "/private/tmp/$LABEL.XXXXXX")"
 trap '/bin/rm -f "$TEMP_PLIST"' EXIT
 /bin/cp "$SOURCE_PLIST" "$TEMP_PLIST"
-/usr/libexec/PlistBuddy -c "Set :ProgramArguments:2 $CLIENT_CDHASH" "$TEMP_PLIST"
+/usr/libexec/PlistBuddy -c "Set :ProgramArguments:1 $CLIENT_MODE" "$TEMP_PLIST"
+/usr/libexec/PlistBuddy -c "Set :ProgramArguments:2 $CLIENT_IDENTITY" "$TEMP_PLIST"
 /usr/bin/plutil -lint "$TEMP_PLIST"
 
 if /bin/launchctl print "system/$LABEL" >/dev/null 2>&1; then
@@ -60,4 +68,9 @@ fi
 
 echo
 echo "CodexAwake Closed-Lid helper installed successfully."
+if [[ "$CLIENT_MODE" == "--client-team-id" ]]; then
+    echo "Signed updates from Team $CLIENT_IDENTITY will reuse this helper without another password."
+else
+    echo "This local ad-hoc build is pinned to its exact code hash for security."
+fi
 echo "Return to CodexAwake and enable CLOSED-LID."

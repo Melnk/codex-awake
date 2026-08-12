@@ -1,3 +1,4 @@
+import CodexAwakeCore
 import SwiftUI
 
 struct DiagnosticsView: View {
@@ -15,11 +16,38 @@ struct DiagnosticsView: View {
             )
             .foregroundStyle(.secondary)
             ScrollView {
-                Text(model.diagnostics.snapshot.sanitizedText)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(model.diagnostics.snapshot.sanitizedText)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Divider()
+
+                    Text(t("Recent operational events", "Последние события"))
+                        .font(.headline)
+                    if model.diagnostics.events.isEmpty {
+                        Text(t("No events yet", "Событий пока нет"))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(model.diagnostics.events.prefix(20)) { event in
+                            HStack(alignment: .top, spacing: 9) {
+                                Image(systemName: eventSymbol(event.level))
+                                    .foregroundStyle(eventColor(event.level))
+                                    .frame(width: 18)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(model.appLanguage.text(event.english, event.russian))
+                                        .textSelection(.enabled)
+                                    Text(event.timestamp, style: .time)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .padding(8)
             }
             .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
             HStack {
@@ -32,7 +60,7 @@ struct DiagnosticsView: View {
                             model.retryClosedLidHelperConnection()
                         }
                         .disabled(model.closedLidHelperActionInProgress)
-                        Button(t("Update Helper for This App Version…", "Обновить helper для этой версии…")) {
+                        Button(t("Repair / Update Closed-Lid Helper…", "Восстановить / обновить Closed-Lid helper…")) {
                             model.installClosedLidHelper()
                         }
                         .disabled(model.closedLidHelperActionInProgress)
@@ -63,5 +91,23 @@ struct DiagnosticsView: View {
 
     private func t(_ english: String, _ russian: String) -> String {
         model.appLanguage.text(english, russian)
+    }
+
+    private func eventSymbol(_ level: OperationalEvent.Level) -> String {
+        switch level {
+        case .info: "info.circle"
+        case .success: "checkmark.circle.fill"
+        case .warning: "exclamationmark.triangle.fill"
+        case .error: "xmark.octagon.fill"
+        }
+    }
+
+    private func eventColor(_ level: OperationalEvent.Level) -> Color {
+        switch level {
+        case .info: .secondary
+        case .success: .green
+        case .warning: .orange
+        case .error: .red
+        }
     }
 }

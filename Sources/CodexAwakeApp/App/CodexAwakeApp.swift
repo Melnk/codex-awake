@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model?.start()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        model?.refreshSystemIntegrationStatus()
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminationPending, let model else { return .terminateNow }
         terminationPending = true
@@ -50,7 +54,7 @@ struct CodexAwakeApp: App {
         } label: {
             CockpitLaunchingMenuBarLabel(
                 symbol: menuBarSymbol,
-                activeCount: model.activity.activeCount,
+                activeCount: model.totalActiveSessionCount,
                 language: model.appLanguage
             )
         }
@@ -78,7 +82,12 @@ struct CodexAwakeApp: App {
 
     private var menuBarSymbol: String {
         if model.activity.certainty == .unknownReconnecting { return "bolt.trianglebadge.exclamationmark" }
-        if model.assertionHeld { return "bolt.circle.fill" }
+        if model.closedLidProtection.connectionState == .reconnecting,
+            model.closedLidProtectionEnabled
+        {
+            return "bolt.trianglebadge.exclamationmark"
+        }
+        if model.assertionHeld || model.closedLidProtection.leaseActive { return "bolt.circle.fill" }
         return "bolt.circle"
     }
 

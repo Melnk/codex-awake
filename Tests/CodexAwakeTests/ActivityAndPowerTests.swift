@@ -10,8 +10,45 @@ final class ActivityAndPowerTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(20))
     }
 
-    func testProductionAssertionPreventsIdleDisplaySleep() {
-        XCTAssertEqual(PowerAssertionManager.assertionTypeName, "PreventUserIdleDisplaySleep")
+    func testProductionAssertionsUseIndependentSystemAndDisplayTypes() {
+        XCTAssertEqual(PowerAssertionManager.systemAssertionTypeName, "PreventUserIdleSystemSleep")
+        XCTAssertEqual(PowerAssertionManager.displayAssertionTypeName, "PreventUserIdleDisplaySleep")
+    }
+
+    func testPowerConfigurationCanKeepSystemAwakeWithoutDisplay() async throws {
+        let power = MockPowerAssertionController()
+
+        await power.setConfiguration(.init(preventSystemSleep: true, preventDisplaySleep: false))
+        try await power.acquire()
+        let snapshot = await power.assertionSnapshot()
+
+        XCTAssertTrue(snapshot.systemSleepPrevented)
+        XCTAssertFalse(snapshot.displaySleepPrevented)
+    }
+
+    func testPowerConfigurationCanDisableDisplayAssertionWhileHeld() async throws {
+        let power = MockPowerAssertionController()
+        try await power.acquire()
+
+        await power.setConfiguration(.init(preventSystemSleep: true, preventDisplaySleep: false))
+        let snapshot = await power.assertionSnapshot()
+
+        XCTAssertTrue(snapshot.systemSleepPrevented)
+        XCTAssertFalse(snapshot.displaySleepPrevented)
+    }
+
+    func testPowerProtectionManagerReconfiguresLiveAssertions() async throws {
+        let idle = MockPowerAssertionController()
+        let protection = PowerProtectionManager(idle: idle)
+        try await protection.acquire()
+
+        try await protection.setAssertionConfiguration(
+            .init(preventSystemSleep: true, preventDisplaySleep: false)
+        )
+        let snapshot = await protection.assertionSnapshot()
+
+        XCTAssertTrue(snapshot.systemSleepPrevented)
+        XCTAssertFalse(snapshot.displaySleepPrevented)
     }
 
     func testZeroActiveThreadsAssertionOff() async {

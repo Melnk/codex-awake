@@ -13,11 +13,15 @@ final class AppModel: ObservableObject {
     @Published var serverPID: Int32?
     @Published var activity = ActivitySnapshot()
     @Published var assertionHeld = false
+    @Published var powerAssertions = PowerAssertionSnapshot()
     @Published var lastSafeError: String?
     @Published var reconnectCount = 0
     @Published var launchAtLogin = false
+    @Published var launchAtLoginState: LaunchAtLoginState = .disabled
     @Published var firstRunAcknowledged: Bool
     @Published var autoKeepAwake: Bool
+    @Published var preventSystemSleep: Bool
+    @Published var preventDisplaySleep: Bool
     @Published var codexDesktopRunning = false
     @Published var codexDesktopActiveSessionIDs: Set<String> = []
     @Published var keepAwakeForCodexDesktop: Bool
@@ -48,6 +52,7 @@ final class AppModel: ObservableObject {
     private var connectionLoopTask: Task<Void, Never>?
     private var closedLidStatusTask: Task<Void, Never>?
     private var chatObservation: AnyCancellable?
+    private var diagnosticsObservation: AnyCancellable?
     private var isShuttingDown = false
     private var lastEventAt: Date?
     private var lastReconciliationAt: Date?
@@ -56,6 +61,8 @@ final class AppModel: ObservableObject {
     init(preferences: any AppPreferencesStoring = UserDefaultsAppPreferences()) {
         self.preferences = preferences
         let auto = preferences.autoKeepAwake
+        let preventSystemSleep = preferences.preventSystemSleep
+        let preventDisplaySleep = preferences.preventDisplaySleep
         let keepForDesktop = preferences.keepAwakeForCodexDesktop
         let closedLid = preferences.closedLidProtectionEnabled
         interfaceTheme =
@@ -69,6 +76,8 @@ final class AppModel: ObservableObject {
         appLanguage = selectedLanguage
         chat = CodexChatSession(language: selectedLanguage)
         autoKeepAwake = auto
+        self.preventSystemSleep = preventSystemSleep
+        self.preventDisplaySleep = preventDisplaySleep
         keepAwakeForCodexDesktop = keepForDesktop
         closedLidProtectionEnabled = closedLid
         firstRunAcknowledged = preferences.firstRunAcknowledged
@@ -79,7 +88,15 @@ final class AppModel: ObservableObject {
         } else {
             workspacePath = nil
         }
-        let power = PowerProtectionManager(closedLidRequested: closedLid)
+        let power = PowerProtectionManager(
+            idle: PowerAssertionManager(
+                configuration: .init(
+                    preventSystemSleep: preventSystemSleep,
+                    preventDisplaySleep: preventDisplaySleep
+                )
+            ),
+            closedLidRequested: closedLid
+        )
         self.power = power
         coordinator = AwakeCoordinator(
             power: power,
@@ -87,7 +104,11 @@ final class AppModel: ObservableObject {
             keepAwakeForCodexDesktop: keepForDesktop
         )
         launchAtLogin = launchManager.isEnabled
+        launchAtLoginState = launchManager.state
         chatObservation = chat.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        diagnosticsObservation = diagnostics.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
     }
@@ -95,11 +116,33 @@ final class AppModel: ObservableObject {
     func start() {
         guard connectionLoopTask == nil else { return }
         logger.notice("CodexAwake lifecycle started")
+        appendEvent(
+            .success,
+            "CodexAwake \(AppBuildInfo.displayVersion) started.",
+            "CodexAwake \(AppBuildInfo.displayVersion) запущен."
+        )
         desktopMonitor.start { [weak self] snapshot in
             self?.handleCodexDesktopSnapshot(snapshot)
         }
         startClosedLidStatusMonitoring()
         Task { await startManagedServer() }
+    }
+
+    func refreshSystemIntegrationStatus() {
+        let previousState = launchAtLoginState
+        launchAtLoginState = launchManager.state
+        launchAtLogin = launchManager.isEnabled
+        if previousState != launchAtLoginState {
+            appendEvent(
+                launchAtLoginState == .enabled ? .success : .info,
+                launchAtLoginMessage(english: true),
+                launchAtLoginMessage(english: false)
+            )
+        }
+        Task {
+            closedLidProtection = await power.refreshClosedLidStatus(retryIfNeeded: false)
+            await refreshPublishedState()
+        }
     }
 
     func startManagedServer() async {
@@ -151,10 +194,33 @@ final class AppModel: ObservableObject {
     func setAutoKeepAwake(_ enabled: Bool) {
         autoKeepAwake = enabled
         preferences.setAutoKeepAwake(enabled)
+        appendEvent(
+            .info,
+            enabled ? "Automatic Codex protection enabled." : "Automatic Codex protection paused.",
+            enabled ? "Автоматическая защита Codex включена." : "Автоматическая защита Codex приостановлена."
+        )
         Task {
             await coordinator.setAutoKeepAwake(enabled)
             await refreshPublishedState()
         }
+    }
+
+    func setPreventSystemSleep(_ enabled: Bool) {
+        preventSystemSleep = enabled
+        preferences.setPreventSystemSleep(enabled)
+        applyPowerAssertionConfiguration(
+            event: enabled ? "System-sleep protection enabled." : "System-sleep protection disabled.",
+            russianEvent: enabled ? "Защита от системного сна включена." : "Защита от системного сна выключена."
+        )
+    }
+
+    func setPreventDisplaySleep(_ enabled: Bool) {
+        preventDisplaySleep = enabled
+        preferences.setPreventDisplaySleep(enabled)
+        applyPowerAssertionConfiguration(
+            event: enabled ? "Display-sleep protection enabled." : "Display-sleep protection disabled.",
+            russianEvent: enabled ? "Защита экрана от выключения включена." : "Защита экрана от выключения выключена."
+        )
     }
 
     func setInterfaceTheme(_ theme: InterfaceTheme) {
@@ -199,6 +265,11 @@ final class AppModel: ObservableObject {
             : t(
                 "Closed-Lid disabled; normal lid sleep is restored.",
                 "Режим закрытой крышки выключен; обычный сон восстановлен.")
+        appendEvent(
+            .info,
+            enabled ? "Closed-Lid protection armed." : "Closed-Lid protection disabled.",
+            enabled ? "Защита при закрытой крышке подготовлена." : "Защита при закрытой крышке выключена."
+        )
         Task {
             do {
                 try await power.setClosedLidRequested(enabled)
@@ -216,6 +287,11 @@ final class AppModel: ObservableObject {
         closedLidActionMessage = t(
             "Checking the existing helper before requesting administrator access…",
             "Проверяем установленный helper перед запросом прав администратора…")
+        appendEvent(
+            .info,
+            "Checking Closed-Lid helper compatibility.",
+            "Проверяется совместимость Closed-Lid helper."
+        )
 
         Task {
             let status = await power.refreshClosedLidStatus(retryIfNeeded: false)
@@ -225,6 +301,11 @@ final class AppModel: ObservableObject {
                     "Closed-Lid helper is already ready. No password is required.",
                     "Closed-Lid helper уже готов. Пароль не требуется.")
                 closedLidHelperActionInProgress = false
+                appendEvent(
+                    .success,
+                    "Closed-Lid helper is ready; no update was needed.",
+                    "Closed-Lid helper готов; обновление не потребовалось."
+                )
                 updateDiagnostics()
                 return
             }
@@ -234,16 +315,39 @@ final class AppModel: ObservableObject {
                 title: t("Installing CodexAwake Closed-Lid helper", "Установка Closed-Lid helper CodexAwake")
             )
             closedLidActionMessage = t(
-                "Administrator approval is required once for this app build. Repeated ON/OFF changes need no password.",
-                "Для этой сборки один раз нужны права администратора. Дальнейшее включение и выключение — без пароля.")
+                "Administrator approval is required for this helper install or repair. Repeated ON/OFF changes need no password.",
+                "Для установки или восстановления helper нужны права администратора. Дальнейшее включение и выключение — без пароля."
+            )
+            appendEvent(
+                .warning,
+                "Closed-Lid helper installer opened for explicit administrator approval.",
+                "Установщик Closed-Lid helper открыт для явного подтверждения администратором."
+            )
             updateDiagnostics()
 
-            do {
-                try await Task.sleep(for: .seconds(20))
-            } catch {
-                // Cancellation only shortens the UI cooldown.
+            for _ in 0..<10 {
+                do {
+                    try await Task.sleep(for: .seconds(2))
+                } catch {
+                    break
+                }
+                let refreshed = await power.refreshClosedLidStatus(retryIfNeeded: false)
+                closedLidProtection = refreshed
+                if refreshed.helperReachable {
+                    closedLidActionMessage = t(
+                        "Closed-Lid helper is ready. Future ON/OFF changes need no password.",
+                        "Closed-Lid helper готов. Дальнейшее включение и выключение не требует пароля."
+                    )
+                    appendEvent(
+                        .success,
+                        "Closed-Lid helper installation or repair completed.",
+                        "Установка или восстановление Closed-Lid helper завершено."
+                    )
+                    break
+                }
             }
             closedLidHelperActionInProgress = false
+            updateDiagnostics()
         }
     }
 
@@ -260,9 +364,19 @@ final class AppModel: ObservableObject {
                 status.helperReachable
                 ? t("Helper connection restored. No password was required.", "Связь с helper восстановлена без пароля.")
                 : t(
-                    "The installed helper does not accept this app build. Update it once to continue using Closed-Lid.",
-                    "Установленный helper не принимает эту сборку. Обновите его один раз для работы Closed-Lid.")
+                    "The helper is still unavailable. Use Repair / Update only if automatic reconnect does not recover it.",
+                    "Helper всё ещё недоступен. Используйте «Восстановить / обновить», только если автоподключение не помогло."
+                )
             closedLidHelperActionInProgress = false
+            appendEvent(
+                status.helperReachable ? .success : .warning,
+                status.helperReachable
+                    ? "Closed-Lid helper connection restored."
+                    : "Closed-Lid helper is still unavailable.",
+                status.helperReachable
+                    ? "Соединение с Closed-Lid helper восстановлено."
+                    : "Closed-Lid helper всё ещё недоступен."
+            )
             updateDiagnostics()
         }
     }
@@ -292,8 +406,15 @@ final class AppModel: ObservableObject {
         do {
             try launchManager.setEnabled(enabled)
             launchAtLogin = launchManager.isEnabled
+            launchAtLoginState = launchManager.state
+            appendEvent(
+                launchAtLoginState == .requiresApproval ? .warning : .success,
+                launchAtLoginMessage(english: true),
+                launchAtLoginMessage(english: false)
+            )
         } catch {
             launchAtLogin = launchManager.isEnabled
+            launchAtLoginState = launchManager.state
             record(error)
         }
     }
@@ -340,7 +461,7 @@ final class AppModel: ObservableObject {
 
     func copyDiagnostics() {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(diagnostics.snapshot.sanitizedText, forType: .string)
+        NSPasteboard.general.setString(diagnostics.sanitizedText, forType: .string)
     }
 
     func chooseCodexBinary() {
@@ -434,6 +555,7 @@ final class AppModel: ObservableObject {
         await supervisor.stop()
         await coordinator.shutdown()
         assertionHeld = false
+        powerAssertions = .init()
         logger.notice("CodexAwake lifecycle stopped")
     }
 
@@ -582,11 +704,31 @@ final class AppModel: ObservableObject {
     private func record(_ error: Error) {
         lastSafeError = SafeDisplay.sanitizedError(error)
         logger.error("An application operation failed; details are available in the in-app diagnostics")
+        appendEvent(
+            .error,
+            "Operation failed: \(lastSafeError ?? "unknown error")",
+            "Операция завершилась ошибкой: \(lastSafeError ?? "неизвестная ошибка")"
+        )
         updateDiagnostics()
     }
 
     private func refreshPublishedState() async {
-        assertionHeld = await coordinator.assertionIsHeld()
+        let previousAssertions = powerAssertions
+        powerAssertions = await power.assertionSnapshot()
+        assertionHeld = powerAssertions.anyAssertionHeld
+        if powerAssertions.anyAssertionHeld, !previousAssertions.anyAssertionHeld {
+            appendEvent(
+                .success,
+                "Power protection activated for Codex activity.",
+                "Защита питания активирована для работы Codex."
+            )
+        } else if !powerAssertions.anyAssertionHeld, previousAssertions.anyAssertionHeld {
+            appendEvent(
+                .info,
+                "Power assertions released; normal idle sleep is restored.",
+                "Системные блокировки сна сняты; обычный режим сна восстановлен."
+            )
+        }
         updateDiagnostics()
     }
 
@@ -599,6 +741,11 @@ final class AppModel: ObservableObject {
         value.codexDesktopRunning = codexDesktopRunning
         value.codexDesktopActiveSessionIDs = codexDesktopActiveSessionIDs
         value.keepAwakeForCodexDesktop = keepAwakeForCodexDesktop
+        value.autoKeepAwake = autoKeepAwake
+        value.preventSystemSleep = preventSystemSleep
+        value.preventDisplaySleep = preventDisplaySleep
+        value.powerAssertions = powerAssertions
+        value.launchAtLogin = launchAtLogin
         value.closedLidProtection = closedLidProtection
         value.endpoint = endpoint
         value.appServerState = appServerState
@@ -630,6 +777,7 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 let value = await power.refreshClosedLidStatus()
                 if value != closedLidProtection {
+                    let previous = closedLidProtection
                     closedLidProtection = value
                     if value.helperReachable {
                         closedLidHelperActionInProgress = false
@@ -642,6 +790,27 @@ final class AppModel: ObservableObject {
                         closedLidActionMessage = t(
                             "Closed-Lid armed; the lease starts with sleep protection.",
                             "Closed-Lid готов; аренда начнётся вместе с защитой от сна.")
+                    }
+                    if value.leaseActive, !previous.leaseActive {
+                        appendEvent(
+                            .success,
+                            "Closed-Lid lease is active; the lid may be closed.",
+                            "Аренда Closed-Lid активна; крышку можно закрыть."
+                        )
+                    } else if value.helperReachable, !previous.helperReachable {
+                        appendEvent(
+                            .success,
+                            "Closed-Lid helper connection is healthy.",
+                            "Соединение с Closed-Lid helper работает."
+                        )
+                    } else if value.helperInstalled, !value.helperReachable,
+                        previous.helperReachable || !previous.helperInstalled
+                    {
+                        appendEvent(
+                            .warning,
+                            "Closed-Lid helper is unavailable; automatic reconnect is scheduled.",
+                            "Closed-Lid helper недоступен; запланировано автоматическое переподключение."
+                        )
                     }
                     updateDiagnostics()
                 }
@@ -673,6 +842,49 @@ final class AppModel: ObservableObject {
             NSWorkspace.shared.open(command)
         } catch {
             record(error)
+        }
+    }
+
+    private func applyPowerAssertionConfiguration(event: String, russianEvent: String) {
+        appendEvent(.info, event, russianEvent)
+        let configuration = PowerAssertionConfiguration(
+            preventSystemSleep: preventSystemSleep,
+            preventDisplaySleep: preventDisplaySleep
+        )
+        Task {
+            do {
+                try await power.setAssertionConfiguration(configuration)
+            } catch {
+                record(error)
+            }
+            await refreshPublishedState()
+        }
+    }
+
+    private func appendEvent(
+        _ level: OperationalEvent.Level,
+        _ english: String,
+        _ russian: String
+    ) {
+        diagnostics.append(
+            OperationalEvent(level: level, english: english, russian: russian)
+        )
+    }
+
+    private func launchAtLoginMessage(english: Bool) -> String {
+        switch launchAtLoginState {
+        case .enabled:
+            english ? "Launch at Login enabled." : "Запуск при входе включён."
+        case .disabled:
+            english ? "Launch at Login disabled." : "Запуск при входе выключен."
+        case .requiresApproval:
+            english
+                ? "Launch at Login needs approval in System Settings > General > Login Items."
+                : "Запуск при входе нужно разрешить в Системных настройках > Основные > Объекты входа."
+        case .unavailable:
+            english
+                ? "Launch at Login is unavailable for this app location."
+                : "Запуск при входе недоступен для текущего расположения приложения."
         }
     }
 

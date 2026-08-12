@@ -8,7 +8,7 @@
     <array>
         <string>/Library/PrivilegedHelperTools/com.melnikoleg.CodexAwake.ClosedLidHelper</string>
         <string>--client-cdhash</string>
-        <string>CLIENT_CDHASH_PLACEHOLDER</string>
+        <string>CLIENT_IDENTITY_PLACEHOLDER</string>
     </array>
     <key>MachServices</key>
     <dict>

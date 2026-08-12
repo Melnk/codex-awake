@@ -53,6 +53,30 @@ final class ClosedLidLeaseTests: XCTestCase {
         XCTAssertNotNil(snapshot.lastError)
     }
 
+    func testHelperReconnectUsesBoundedBackoff() async {
+        let helper = MockClosedLidHelper(failure: TestClosedLidError.unavailable)
+        let clock = LockedTestClock(now: Date(timeIntervalSince1970: 1_000))
+        let manager = ClosedLidLeaseManager(
+            helper: helper,
+            token: "test-token",
+            now: { clock.value }
+        )
+        do {
+            try await manager.setRequested(true, protectionIsActive: true)
+        } catch {
+            // The first failure schedules the automatic retry.
+        }
+
+        _ = await manager.refresh()
+        let attemptsBeforeDeadline = await helper.acquireCount
+        clock.advance(by: 2)
+        _ = await manager.refresh()
+        let attemptsAfterDeadline = await helper.acquireCount
+
+        XCTAssertEqual(attemptsBeforeDeadline, 1)
+        XCTAssertEqual(attemptsAfterDeadline, 2)
+    }
+
     func testCommandUsesSudoWithSafelyQuotedPath() {
         let command = ClosedLidHelperCommandBuilder.commandContents(
             scriptPath: "/Applications/Codex Awake's.app/install.sh",
@@ -61,6 +85,51 @@ final class ClosedLidLeaseTests: XCTestCase {
 
         XCTAssertTrue(command.contains("/usr/bin/sudo '/Applications/Codex Awake'\\''s.app/install.sh'"))
         XCTAssertFalse(command.contains("sudo sh -c"))
+    }
+
+    func testClosedLidClientAuthorizationAcceptsExactCodeHash() throws {
+        let hash = String(repeating: "a", count: 40)
+
+        let requirement = try ClosedLidClientAuthorization.codeSigningRequirement(
+            arguments: ["helper", "--client-cdhash", hash]
+        )
+
+        XCTAssertEqual(requirement, "cdhash H\"\(hash)\"")
+    }
+
+    func testClosedLidClientAuthorizationUsesStableTeamRequirement() throws {
+        let requirement = try ClosedLidClientAuthorization.codeSigningRequirement(
+            arguments: ["helper", "--client-team-id", "AB12CD34EF"]
+        )
+
+        XCTAssertTrue(requirement.contains("anchor apple generic"))
+        XCTAssertTrue(requirement.contains(#"identifier "com.melnikoleg.CodexAwake""#))
+        XCTAssertTrue(requirement.contains(#"certificate leaf[subject.OU] = "AB12CD34EF""#))
+    }
+
+    func testClosedLidClientAuthorizationRejectsUnsafeIdentity() {
+        XCTAssertThrowsError(
+            try ClosedLidClientAuthorization.codeSigningRequirement(
+                arguments: ["helper", "--client-team-id", "bad requirement"]
+            )
+        )
+    }
+
+    func testClosedLidConnectionStateIsUserFacingAndDeterministic() {
+        var snapshot = ClosedLidProtectionSnapshot()
+        XCTAssertEqual(snapshot.connectionState, .setupRequired)
+
+        snapshot.helperInstalled = true
+        XCTAssertEqual(snapshot.connectionState, .reconnecting)
+
+        snapshot.helperReachable = true
+        XCTAssertEqual(snapshot.connectionState, .ready)
+
+        snapshot.requested = true
+        XCTAssertEqual(snapshot.connectionState, .armed)
+
+        snapshot.leaseActive = true
+        XCTAssertEqual(snapshot.connectionState, .active)
     }
 }
 
@@ -99,5 +168,24 @@ private actor MockClosedLidHelper: ClosedLidHelperCommunicating {
         releaseCount += 1
         if let failure { throw failure }
         return .init(disablesSleep: false)
+    }
+}
+
+private final class LockedTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var now: Date
+
+    init(now: Date) {
+        self.now = now
+    }
+
+    var value: Date {
+        lock.withLock { now }
+    }
+
+    func advance(by interval: TimeInterval) {
+        lock.withLock {
+            now = now.addingTimeInterval(interval)
+        }
     }
 }

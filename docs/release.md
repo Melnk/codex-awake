@@ -1,6 +1,6 @@
 # Future signed releases
 
-Local builds are ad-hoc signed by `scripts/build_app.sh`. They are not notarized and must not be presented as an official distributable release. The local Closed-Lid helper uses an explicit administrator-run installer and pins the installed launch daemon to that build's CDHash; rebuilding requires reinstalling the helper.
+Local builds are ad-hoc signed by `scripts/build_app.sh`. They are not notarized and must not be presented as an official distributable release. The local Closed-Lid helper uses an explicit administrator-run installer and pins the installed launch daemon to that build's CDHash; rebuilding requires reinstalling the helper. When `CODESIGN_IDENTITY` names a Developer ID Application identity, the build script signs both executables with hardened runtime and the helper installer uses the stable Apple Team ID requirement instead.
 
 For a future public/private downloadable release:
 

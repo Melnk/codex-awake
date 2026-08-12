@@ -50,7 +50,7 @@
 
 ## ADR-013 — Exact client identity for the root helper
 
-**Decision:** the install script writes the installing app's exact CDHash into the launch daemon arguments, and the daemon converts it to an XPC connection signing requirement before accepting clients. Ad-hoc rebuilds therefore require helper reinstallation. The privileged API remains limited to status/acquire/renew/release and never accepts executable paths, shell text, settings names, or values.
+**Decision:** the install script writes either the installing app's Apple Team ID or, when no trustworthy Team ID exists, its exact CDHash into the launch daemon arguments. The daemon converts only those validated identity forms into a fixed XPC signing requirement before accepting clients. Signed updates from the same team reuse the helper; ad-hoc rebuilds require helper reinstallation. The privileged API remains limited to status/acquire/renew/release and never accepts executable paths, shell text, settings names, or values.
 
 ## ADR-014 — Feature boundaries and injected persistence
 

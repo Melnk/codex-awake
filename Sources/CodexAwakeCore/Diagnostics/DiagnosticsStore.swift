@@ -10,6 +10,11 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
     public var codexDesktopRunning = false
     public var codexDesktopActiveSessionIDs: Set<String> = []
     public var keepAwakeForCodexDesktop = true
+    public var autoKeepAwake = true
+    public var preventSystemSleep = true
+    public var preventDisplaySleep = true
+    public var powerAssertions = PowerAssertionSnapshot()
+    public var launchAtLogin = false
     public var closedLidProtection = ClosedLidProtectionSnapshot()
     public var transport = "Unix domain socket (WebSocket upgrade)"
     public var endpoint: String?
@@ -46,6 +51,12 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
             Active Codex desktop sessions: \(codexDesktopActiveSessionIDs.count)
             Active desktop session IDs: \(desktopSessions.isEmpty ? "none" : desktopSessions)
             Keep awake for Codex desktop: \(keepAwakeForCodexDesktop ? "enabled" : "disabled")
+            Automatic protection: \(autoKeepAwake ? "enabled" : "disabled")
+            Prevent system sleep: \(preventSystemSleep ? "enabled" : "disabled")
+            Prevent display sleep: \(preventDisplaySleep ? "enabled" : "disabled")
+            System-sleep assertion: \(powerAssertions.systemSleepPrevented ? "held" : "released")
+            Display-sleep assertion: \(powerAssertions.displaySleepPrevented ? "held" : "released")
+            Launch at login: \(launchAtLogin ? "enabled" : "disabled")
             Transport: \(transport)
             Endpoint: \(endpoint ?? "unavailable")
             App Server: \(appServerState.rawValue)
@@ -62,6 +73,8 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
             Closed-Lid helper reachable: \(closedLidProtection.helperReachable ? "yes" : "no")
             Closed-Lid lease: \(closedLidProtection.leaseActive ? "active" : "inactive")
             Closed-Lid lease expires: \(closedLidProtection.leaseExpiresAt.map(formatter.string(from:)) ?? "none")
+            Closed-Lid connection state: \(closedLidProtection.connectionState.rawValue)
+            Closed-Lid next retry: \(closedLidProtection.nextRetryAt.map(formatter.string(from:)) ?? "none")
             Closed-Lid error: \(closedLidProtection.lastError ?? "none")
             Last App Server event: \(lastEventAt.map(formatter.string(from:)) ?? "none")
             Last reconciliation: \(lastReconciliationAt.map(formatter.string(from:)) ?? "none")
@@ -77,8 +90,27 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
 @MainActor
 public final class DiagnosticsStore: ObservableObject {
     @Published public var snapshot: DiagnosticsSnapshot
+    @Published public private(set) var events: [OperationalEvent] = []
+    private let eventLimit: Int
 
-    public init(snapshot: DiagnosticsSnapshot = .init()) {
+    public init(snapshot: DiagnosticsSnapshot = .init(), eventLimit: Int = 50) {
         self.snapshot = snapshot
+        self.eventLimit = max(1, eventLimit)
+    }
+
+    public func append(_ event: OperationalEvent) {
+        events.insert(event, at: 0)
+        if events.count > eventLimit {
+            events.removeLast(events.count - eventLimit)
+        }
+    }
+
+    public var sanitizedText: String {
+        guard !events.isEmpty else { return snapshot.sanitizedText }
+        let formatter = ISO8601DateFormatter()
+        let recent = events.map {
+            "\(formatter.string(from: $0.timestamp)) [\($0.level.rawValue)] \($0.english)"
+        }.joined(separator: "\n")
+        return "\(snapshot.sanitizedText)\n\nRecent operational events:\n\(recent)"
     }
 }

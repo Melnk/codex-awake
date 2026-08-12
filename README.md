@@ -4,9 +4,9 @@
   <img src="Resources/AppIcon.png" alt="CodexAwake logo" width="160">
 </p>
 
-CodexAwake is a native macOS menu bar utility and Codex cockpit. It launches its own local Codex App Server, provides a streamed chat UI for Codex, prevents **idle system sleep**, and offers an explicit opt-in **Closed-Lid** mode backed by a narrow privileged helper.
+CodexAwake is a native macOS menu bar utility and Codex cockpit. It launches its own local Codex App Server, provides a streamed chat UI for Codex, independently controls **idle system sleep** and **display sleep**, and offers an explicit opt-in **Closed-Lid** mode backed by a narrow privileged helper.
 
-It uses the official App Server protocol for managed-task state. For independent Codex Desktop tasks, it reads only local rollout identity plus `task_started` / `task_complete` lifecycle markers; prompt and response text is never decoded. The desktop bundle identifier remains the ON/OFF presence signal. CodexAwake owns at most one `PreventUserIdleDisplaySleep` assertion, which keeps both the display and the system awake while protection is active. Closed-Lid is separate, defaults off, and changes the system sleep policy only while a short renewable lease is active.
+It uses the official App Server protocol for managed-task state. For independent Codex Desktop tasks, it reads only local rollout identity plus `task_started` / `task_complete` lifecycle markers; prompt and response text is never decoded. The desktop bundle identifier remains the ON/OFF presence signal. CodexAwake owns at most one `PreventUserIdleSystemSleep` assertion and one `PreventUserIdleDisplaySleep` assertion, selected independently in the cockpit. Closed-Lid is separate, defaults off, and changes the system sleep policy only while a short renewable lease is active.
 
 > [!IMPORTANT]
 > CodexAwake tracks its own cockpit tasks and Codex CLI/TUI sessions connected with `--remote` to the App Server launched by CodexAwake. It separately detects active root tasks created by Codex Desktop from lifecycle markers in `~/.codex/sessions`; those sessions are identified as Desktop tasks but their prompts, responses, reasoning, and tool output are not read. Ordinary unmanaged CLI sessions, Codex Cloud, another user's processes, and remote hosts remain out of scope unless they connect to the managed server.
@@ -39,6 +39,8 @@ You need:
 3. The dashboard opens automatically. While CodexAwake is running, its icon stays in the Dock and macOS shows the normal running-app indicator below it. If you close the dashboard, click the Dock icon or the **bolt icon** in the macOS menu bar and select **Open Cockpit…**.
 
 4. Choose a project folder in **Chat with Codex**. The main protection switch is enabled by default and starts protecting the Mac when Codex is open or a tracked task is active.
+
+   Under **Protection modes**, choose whether CodexAwake should keep the Mac running, keep the display on, or both. **Launch at Login** is available in the same section.
 
    Use the **EN / RU** switch in the top-right corner to change the application language. The choice is saved for the next launch.
 
@@ -87,6 +89,8 @@ If macOS blocks the first launch, right-click **CodexAwake.app**, choose **Open*
 
 4. В блоке **Chat with Codex** выберите папку проекта. Основная защита включена по умолчанию и не даёт Mac уснуть, когда открыт Codex или выполняется отслеживаемая задача.
 
+   В разделе **Режимы защиты** отдельно выберите, нужно ли оставлять включённым Mac, экран или оба режима. Там же находится **Запускать при входе**.
+
    Переключатель **EN / RU** в правом верхнем углу меняет язык приложения. Выбранный язык сохраняется для следующих запусков.
 
 5. Необязательно: чтобы Mac продолжал работать с закрытой крышкой, нажмите **Однократная настройка helper…**, подтвердите запрос администратора и включите **Режим закрытой крышки**. Закрывайте крышку только после появления статуса **Active — you can close the lid**.
@@ -112,6 +116,8 @@ open /Applications/CodexAwake.app
 Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a clean violet visual language with a saved **Light / Dark** appearance switch. It includes:
 
 - a clear **ON/OFF** protection card that explains what is currently keeping the Mac awake;
+- independent **Keep Mac awake** and **Keep display on** controls;
+- native **Launch at Login** state, including the macOS approval status;
 - a saved **EN / RU** language switch for the cockpit, menu, dialogs, and diagnostics;
 - Codex Desktop presence, assertion, and combined active-session instruments;
 - privacy-safe IDs for active Codex Desktop and managed tasks;
@@ -130,7 +136,7 @@ Codex Desktop rollouts ──→ task_started / task_complete markers ───�
 Codex Desktop bundle ID ─→ ON/OFF presence ─────────────────────────┘              ↓
                                                                PowerProtectionManager
                                                                   ↙             ↘
-                                                ONE idle-sleep assertion     optional XPC lease
+                                             system + display assertions    optional XPC lease
                                                                                       ↓
                                                                       root helper → pmset disablesleep
 ```
@@ -238,18 +244,19 @@ The command contains no capability token or credential. The endpoint changes onl
 
 ## Auto Keep Awake
 
-**Auto Keep Awake** defaults to on. With it enabled:
+**Auto Keep Awake** defaults to on. **Keep Mac awake** and **Keep display on** are independent and also default to on. With automatic protection enabled:
 
 - if **Keep awake while Codex App is running** is enabled, Codex Desktop presence acquires the assertion even when no managed task is visible;
-- while the assertion is held, macOS does not automatically dim or turn off the display and cannot enter idle system sleep;
+- `PreventUserIdleSystemSleep` keeps background work running while allowing the display to turn off normally;
+- `PreventUserIdleDisplaySleep` keeps the display on; the two assertions are reconciled immediately when either mode changes;
 - an active Codex Desktop lifecycle acquires the assertion even when full-time presence protection is disabled;
-- `0 → 1+` active managed threads acquires one assertion;
-- additional active threads reuse that assertion;
+- `0 → 1+` active managed threads acquires the enabled assertion set;
+- additional active threads reuse the same assertion set;
 - desktop exit or `1+ → 0` managed threads releases after a one-second debounce when no other source still requires protection;
 - `waitingOnApproval` remains active;
 - `idle`, `notLoaded`, and `systemError` are inactive.
 
-The main protection switch overrides every source and releases immediately when switched off. The separate desktop-presence toggle leaves precise managed-task and detected Desktop-task protection enabled. CodexAwake does not expose a default-on manual or indefinite force-awake mode.
+The main protection switch overrides every source and releases both assertions immediately when switched off. The separate desktop-presence toggle leaves precise managed-task and detected Desktop-task protection enabled. CodexAwake does not expose a default-on manual or indefinite force-awake mode.
 
 ## Closed-Lid mode
 
@@ -260,9 +267,9 @@ The display-sleep assertion still allows sleep when a MacBook lid is closed. Clo
 3. Click **Enable closed-lid mode** and complete the one-time administrator prompt.
 4. Wait until the cockpit says **Active — you can close the lid** before closing the display.
 
-The helper accepts only `status`, `acquire`, `renew`, and `release` over its fixed XPC interface. The installed launch daemon authorizes the exact CDHash of the app that installed it. Ad-hoc rebuilding changes that hash, so local development builds must use **Install / Update Helper** again.
+The helper accepts only `status`, `acquire`, `renew`, and `release` over its fixed XPC interface. Developer ID builds authorize the app identifier plus Apple Team ID, so future builds signed by the same team reuse the helper without another password. Local ad-hoc builds have no trustworthy Team ID and remain pinned to the exact CDHash; rebuilding them therefore requires **Install / Update Helper** again. This fallback is intentional and prevents an unrelated ad-hoc app from impersonating CodexAwake.
 
-While ordinary sleep protection is required, CodexAwake acquires a 120-second lease and renews it every 30 seconds. The root helper snapshots the prior `disablesleep` value, applies `pmset -a disablesleep 1`, persists only token expirations and the restoration value under `/var/db/com.melnikoleg.CodexAwake`, and restores the prior value after the final release, app shutdown, helper shutdown, or lease expiry. A client crash can therefore leave the setting changed for no more than the remaining bounded lease.
+While ordinary sleep protection is required, CodexAwake acquires a 120-second lease and renews it every 30 seconds. Failed connections recover automatically with capped exponential backoff; **Retry** performs an immediate password-free status check. The root helper snapshots the prior `disablesleep` value, applies `pmset -a disablesleep 1`, persists only token expirations and the restoration value under `/var/db/com.melnikoleg.CodexAwake`, and restores the prior value after the final release, app shutdown, helper shutdown, or lease expiry. A client crash can therefore leave the setting changed for no more than the remaining bounded lease.
 
 Closed-Lid keeps the computer awake as a whole, not only Codex. Music, downloads, servers, and other processes can continue; the internal display is physically unavailable. Battery drain and heat will be higher, and macOS may still force sleep for low battery, thermal protection, shutdown, or other safety conditions. The feature defaults off. Use **Diagnostics → Remove Closed-Lid Helper** to restore normal behavior and remove the daemon.
 
@@ -286,6 +293,8 @@ The menu's **Launch at Login** toggle uses `SMAppService.mainApp`. CodexAwake do
 - loaded/active counts and abbreviated thread/turn IDs;
 - active Codex Desktop lifecycle count and abbreviated session IDs;
 - assertion state, last event/reconciliation, reconnect count;
+- independent system/display assertion modes and current held state;
+- Launch at Login state and the 50 most recent privacy-safe operational events;
 - Closed-Lid requested/installed/reachable/lease state, expiry, and sanitized helper error;
 - the latest sanitized operational error.
 
@@ -296,7 +305,7 @@ It excludes prompts, model responses, diffs, tool output, terminal output, file 
 1. Launch CodexAwake and confirm `App Server: Running` and the expected `Codex Desktop` presence state.
 2. Use **Copy Codex command** and run it in a terminal.
 3. Start a safe test turn (this is the only step that can consume model quota).
-4. Confirm the menu shows an active thread and `Keep Awake: ON`.
+4. Confirm the menu shows an active thread and the expected `System sleep` / `Display sleep` states.
 5. Inspect system assertions without changing settings:
 
    ```bash
@@ -304,7 +313,7 @@ It excludes prompts, model responses, diffs, tool output, terminal output, file 
    ```
 
 6. Wait for the final turn to complete and the one-second debounce. Confirm `Keep Awake: OFF`.
-7. Repeat with multiple TUI clients; CodexAwake should still own only one assertion.
+7. Repeat with multiple TUI clients; CodexAwake should still own at most one assertion of each enabled type.
 
 The unprivileged app never runs `pmset`. Only the installed root helper invokes the exact fixed `disablesleep` commands while a bounded lease exists.
 
@@ -314,14 +323,14 @@ Without the optional helper, CodexAwake prevents **idle system sleep** only and 
 
 ## Built-in Codex prevent-idle feature
 
-Some Codex versions may expose their own experimental prevent-idle-sleep feature. CodexAwake never edits `~/.codex/config.toml` or toggles Codex feature flags. If the user enables both mechanisms, Codex may own another assertion. The guarantee here is that **CodexAwake owns at most one of its own assertions**, not that only one assertion exists system-wide.
+Some Codex versions may expose their own experimental prevent-idle-sleep feature. CodexAwake never edits `~/.codex/config.toml` or toggles Codex feature flags. If the user enables both mechanisms, Codex may own another assertion. The guarantee here is that **CodexAwake owns at most one system-sleep and one display-sleep assertion**, not that only those assertions exist system-wide.
 
 ## Privacy and security
 
 - Unix socket runtime directory: `0700`;
 - no listening TCP interface;
 - no credentials in arguments, clipboard, logs, or helper script;
-- privileged helper accepts only four fixed lease/status methods and authenticates the installing app's exact code hash;
+- privileged helper accepts only four fixed lease/status methods and authenticates a signed Team ID or, for local ad-hoc builds, the exact code hash;
 - helper state contains no prompt, credential, workspace, or response data and expires automatically;
 - no prompt, response, diff, tool, terminal, or file-content logging (cockpit text exists only in UI memory and normal Codex conversation storage);
 - read-only Desktop rollout scanning limited to identity and lifecycle markers;

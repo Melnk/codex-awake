@@ -26,10 +26,14 @@ final class AppPreferencesTests: XCTestCase {
 
         // Act
         let autoKeepAwake = preferences.autoKeepAwake
+        let preventSystemSleep = preferences.preventSystemSleep
+        let preventDisplaySleep = preferences.preventDisplaySleep
         let keepAwakeForDesktop = preferences.keepAwakeForCodexDesktop
 
         // Assert
         XCTAssertTrue(autoKeepAwake)
+        XCTAssertTrue(preventSystemSleep)
+        XCTAssertTrue(preventDisplaySleep)
         XCTAssertTrue(keepAwakeForDesktop)
         XCTAssertFalse(preferences.closedLidProtectionEnabled)
     }
@@ -40,6 +44,8 @@ final class AppPreferencesTests: XCTestCase {
 
         // Act
         preferences.setAutoKeepAwake(false)
+        preferences.setPreventSystemSleep(false)
+        preferences.setPreventDisplaySleep(false)
         preferences.setKeepAwakeForCodexDesktop(false)
         preferences.setClosedLidProtectionEnabled(true)
         preferences.setFirstRunAcknowledged(true)
@@ -49,6 +55,8 @@ final class AppPreferencesTests: XCTestCase {
 
         // Assert
         XCTAssertFalse(preferences.autoKeepAwake)
+        XCTAssertFalse(preferences.preventSystemSleep)
+        XCTAssertFalse(preferences.preventDisplaySleep)
         XCTAssertFalse(preferences.keepAwakeForCodexDesktop)
         XCTAssertTrue(preferences.closedLidProtectionEnabled)
         XCTAssertTrue(preferences.firstRunAcknowledged)
