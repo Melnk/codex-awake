@@ -27,6 +27,16 @@ struct DiagnosticsView: View {
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                 Button(t("Choose Codex Binary…", "Выбрать исполняемый файл Codex…")) { model.chooseCodexBinary() }
                 if model.closedLidProtection.helperInstalled {
+                    if !model.closedLidProtection.helperReachable {
+                        Button(t("Retry Helper Connection", "Повторить подключение к helper")) {
+                            model.retryClosedLidHelperConnection()
+                        }
+                        .disabled(model.closedLidHelperActionInProgress)
+                        Button(t("Update Helper for This App Version…", "Обновить helper для этой версии…")) {
+                            model.installClosedLidHelper()
+                        }
+                        .disabled(model.closedLidHelperActionInProgress)
+                    }
                     Button(t("Remove Closed-Lid Helper…", "Удалить Closed-Lid helper…")) {
                         model.removeClosedLidHelper()
                     }
@@ -34,6 +44,7 @@ struct DiagnosticsView: View {
                     Button(t("Install Closed-Lid Helper…", "Установить Closed-Lid helper…")) {
                         model.installClosedLidHelper()
                     }
+                    .disabled(model.closedLidHelperActionInProgress)
                 }
                 Spacer()
                 Text(

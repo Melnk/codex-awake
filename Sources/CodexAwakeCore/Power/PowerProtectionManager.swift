@@ -2,8 +2,14 @@ import Foundation
 
 public protocol PowerProtectionControlling: PowerAssertionControlling {
     func setClosedLidRequested(_ enabled: Bool) async throws
-    func refreshClosedLidStatus() async -> ClosedLidProtectionSnapshot
+    func refreshClosedLidStatus(retryIfNeeded: Bool) async -> ClosedLidProtectionSnapshot
     func closedLidSnapshot() async -> ClosedLidProtectionSnapshot
+}
+
+extension PowerProtectionControlling {
+    public func refreshClosedLidStatus() async -> ClosedLidProtectionSnapshot {
+        await refreshClosedLidStatus(retryIfNeeded: true)
+    }
 }
 
 public actor PowerProtectionManager: PowerProtectionControlling {
@@ -47,8 +53,8 @@ public actor PowerProtectionManager: PowerProtectionControlling {
         try await closedLid.setRequested(enabled, protectionIsActive: held)
     }
 
-    public func refreshClosedLidStatus() async -> ClosedLidProtectionSnapshot {
-        var snapshot = await closedLid.refresh()
+    public func refreshClosedLidStatus(retryIfNeeded: Bool = true) async -> ClosedLidProtectionSnapshot {
+        var snapshot = await closedLid.refresh(retryIfNeeded: retryIfNeeded)
         snapshot.requested = closedLidRequested
         return snapshot
     }

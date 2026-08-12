@@ -93,10 +93,20 @@ struct MenuContentView: View {
                 get: { model.closedLidProtectionEnabled },
                 set: { model.setClosedLidProtectionEnabled($0) }
             ))
-        if !model.closedLidProtection.helperInstalled || !model.closedLidProtection.helperReachable {
-            Button(t("Install / Update Closed-Lid Helper…", "Установить / обновить helper…")) {
+        if !model.closedLidProtection.helperInstalled {
+            Button(t("One-time Closed-Lid Helper Setup…", "Однократная настройка Closed-Lid helper…")) {
                 model.installClosedLidHelper()
             }
+            .disabled(model.closedLidHelperActionInProgress)
+        } else if !model.closedLidProtection.helperReachable {
+            Button(t("Retry Helper Connection", "Повторить подключение к helper")) {
+                model.retryClosedLidHelperConnection()
+            }
+            .disabled(model.closedLidHelperActionInProgress)
+            Button(t("Update Helper for This App Version…", "Обновить helper для этой версии…")) {
+                model.installClosedLidHelper()
+            }
+            .disabled(model.closedLidHelperActionInProgress)
         } else {
             Button(t("Remove Closed-Lid Helper…", "Удалить Closed-Lid helper…")) { model.removeClosedLidHelper() }
         }

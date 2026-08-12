@@ -333,12 +333,27 @@ struct CockpitView: View {
                 .controlSize(.small)
             }
 
-            if !model.closedLidProtection.helperInstalled || !model.closedLidProtection.helperReachable {
-                Button(t("Enable closed-lid mode", "Включить работу с закрытой крышкой")) {
+            if !model.closedLidProtection.helperInstalled {
+                Button(t("One-time helper setup…", "Однократная настройка helper…")) {
                     model.installClosedLidHelper()
                 }
                 .buttonStyle(CockpitSecondaryButtonStyle())
                 .font(.system(size: 10, weight: .semibold))
+                .disabled(model.closedLidHelperActionInProgress)
+            } else if !model.closedLidProtection.helperReachable {
+                HStack(spacing: 8) {
+                    Button(t("Retry", "Повторить")) {
+                        model.retryClosedLidHelperConnection()
+                    }
+                    .buttonStyle(CockpitSecondaryButtonStyle())
+
+                    Button(t("Update for this version…", "Обновить для этой версии…")) {
+                        model.installClosedLidHelper()
+                    }
+                    .buttonStyle(CockpitSecondaryButtonStyle())
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .disabled(model.closedLidHelperActionInProgress)
             }
 
             Text(
@@ -940,7 +955,7 @@ private struct ThemeSwitcher: View {
     @Binding var selection: InterfaceTheme
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 0) {
             ForEach(InterfaceTheme.allCases) { theme in
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -949,12 +964,13 @@ private struct ThemeSwitcher: View {
                 } label: {
                     Image(systemName: theme.symbol)
                         .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 32, height: 28)
+                        .frame(width: 38, height: 32)
                         .foregroundStyle(selection == theme ? Color.white : CockpitPalette.muted)
                         .background(
                             selection == theme ? CockpitPalette.ice : Color.clear,
                             in: RoundedRectangle(cornerRadius: 9, style: .continuous)
                         )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(language.text("\(theme.title) appearance", "Тема: \(theme.title(in: language))"))
@@ -978,7 +994,7 @@ private struct LanguageSwitcher: View {
     @Binding var selection: AppLanguage
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 0) {
             ForEach(AppLanguage.allCases) { language in
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -987,12 +1003,13 @@ private struct LanguageSwitcher: View {
                 } label: {
                     Text(language.code)
                         .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .frame(width: 32, height: 28)
+                        .frame(width: 38, height: 32)
                         .foregroundStyle(selection == language ? Color.white : CockpitPalette.muted)
                         .background(
                             selection == language ? CockpitPalette.ice : Color.clear,
                             in: RoundedRectangle(cornerRadius: 9, style: .continuous)
                         )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(language.title)

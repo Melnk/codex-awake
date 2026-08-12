@@ -42,7 +42,9 @@ You need:
 
    Use the **EN / RU** switch in the top-right corner to change the application language. The choice is saved for the next launch.
 
-5. Optional: to keep the Mac running with the lid closed, enable **Closed-lid mode**, click **Enable closed-lid mode**, and approve the one-time administrator prompt. Close the lid only after the status says **Active — you can close the lid**.
+5. Optional: to keep the Mac running with the lid closed, click **One-time helper setup…**, approve the administrator prompt, and enable **Closed-lid mode**. Close the lid only after the status says **Active — you can close the lid**.
+
+   The ordinary **Auto Keep Awake** switch never needs an administrator password. Closed-Lid asks only when its helper is installed or updated for a new locally built app version. Use **Retry** first if an already installed helper is temporarily unavailable; retrying does not request a password.
 
 To keep the app in Applications, open the build folder and drag **CodexAwake.app** into **Applications**:
 
@@ -87,7 +89,9 @@ If macOS blocks the first launch, right-click **CodexAwake.app**, choose **Open*
 
    Переключатель **EN / RU** в правом верхнем углу меняет язык приложения. Выбранный язык сохраняется для следующих запусков.
 
-5. Необязательно: чтобы Mac продолжал работать с закрытой крышкой, включите **Closed-lid mode**, нажмите **Enable closed-lid mode** и один раз подтвердите запрос администратора. Закрывайте крышку только после появления статуса **Active — you can close the lid**.
+5. Необязательно: чтобы Mac продолжал работать с закрытой крышкой, нажмите **Однократная настройка helper…**, подтвердите запрос администратора и включите **Режим закрытой крышки**. Закрывайте крышку только после появления статуса **Active — you can close the lid**.
+
+   Обычный переключатель **Auto Keep Awake** никогда не требует пароль администратора. Пароль нужен только при установке Closed-Lid helper или его обновлении для новой локальной сборки приложения. Если установленный helper временно недоступен, сначала нажмите **Повторить** — это действие не запрашивает пароль.
 
 Чтобы перенести приложение в «Программы», откройте папку сборки и перетащите **CodexAwake.app** в **Applications**:
 

@@ -24,6 +24,7 @@ final class AppModel: ObservableObject {
     @Published var closedLidProtectionEnabled: Bool
     @Published var closedLidProtection = ClosedLidProtectionSnapshot()
     @Published var closedLidActionMessage: String?
+    @Published var closedLidHelperActionInProgress = false
     @Published var workspacePath: String?
     @Published var interfaceTheme: InterfaceTheme
     @Published var appLanguage: AppLanguage
@@ -210,14 +211,60 @@ final class AppModel: ObservableObject {
     }
 
     func installClosedLidHelper() {
-        if !closedLidProtectionEnabled { setClosedLidProtectionEnabled(true) }
-        openClosedLidHelperCommand(
-            resource: "install-closed-lid-helper",
-            title: t("Installing CodexAwake Closed-Lid helper", "Установка Closed-Lid helper CodexAwake")
-        )
+        guard !closedLidHelperActionInProgress else { return }
+        closedLidHelperActionInProgress = true
         closedLidActionMessage = t(
-            "Complete the administrator prompt in Terminal, then return here.",
-            "Подтвердите запрос администратора в Терминале, затем вернитесь сюда.")
+            "Checking the existing helper before requesting administrator access…",
+            "Проверяем установленный helper перед запросом прав администратора…")
+
+        Task {
+            let status = await power.refreshClosedLidStatus(retryIfNeeded: false)
+            closedLidProtection = status
+            guard !status.helperInstalled || !status.helperReachable else {
+                closedLidActionMessage = t(
+                    "Closed-Lid helper is already ready. No password is required.",
+                    "Closed-Lid helper уже готов. Пароль не требуется.")
+                closedLidHelperActionInProgress = false
+                updateDiagnostics()
+                return
+            }
+
+            openClosedLidHelperCommand(
+                resource: "install-closed-lid-helper",
+                title: t("Installing CodexAwake Closed-Lid helper", "Установка Closed-Lid helper CodexAwake")
+            )
+            closedLidActionMessage = t(
+                "Administrator approval is required once for this app build. Repeated ON/OFF changes need no password.",
+                "Для этой сборки один раз нужны права администратора. Дальнейшее включение и выключение — без пароля.")
+            updateDiagnostics()
+
+            do {
+                try await Task.sleep(for: .seconds(20))
+            } catch {
+                // Cancellation only shortens the UI cooldown.
+            }
+            closedLidHelperActionInProgress = false
+        }
+    }
+
+    func retryClosedLidHelperConnection() {
+        guard !closedLidHelperActionInProgress else { return }
+        closedLidHelperActionInProgress = true
+        closedLidActionMessage = t(
+            "Checking the helper connection…",
+            "Проверяем подключение к helper…")
+        Task {
+            let status = await power.refreshClosedLidStatus(retryIfNeeded: false)
+            closedLidProtection = status
+            closedLidActionMessage =
+                status.helperReachable
+                ? t("Helper connection restored. No password was required.", "Связь с helper восстановлена без пароля.")
+                : t(
+                    "The installed helper does not accept this app build. Update it once to continue using Closed-Lid.",
+                    "Установленный helper не принимает эту сборку. Обновите его один раз для работы Closed-Lid.")
+            closedLidHelperActionInProgress = false
+            updateDiagnostics()
+        }
     }
 
     func removeClosedLidHelper() {
@@ -584,6 +631,9 @@ final class AppModel: ObservableObject {
                 let value = await power.refreshClosedLidStatus()
                 if value != closedLidProtection {
                     closedLidProtection = value
+                    if value.helperReachable {
+                        closedLidHelperActionInProgress = false
+                    }
                     if value.leaseActive {
                         closedLidActionMessage = t(
                             "Closed-Lid lease active. The display may be closed.",
