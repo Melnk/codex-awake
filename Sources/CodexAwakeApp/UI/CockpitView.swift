@@ -547,34 +547,29 @@ struct CockpitView: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .bottom, spacing: 12) {
-                ZStack(alignment: .topLeading) {
-                    if prompt.isEmpty {
-                        Text(
-                            t(
-                                "Ask Codex to inspect, explain, build, or fix…",
-                                "Попросите Codex проверить, объяснить, собрать или исправить…")
-                        )
-                        .font(.system(size: 13))
-                        .foregroundStyle(CockpitPalette.muted.opacity(0.86))
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 14)
-                        .allowsHitTesting(false)
-                    }
-                    TextEditor(text: $prompt)
-                        .font(.system(size: 13))
-                        .scrollContentBackground(.hidden)
-                        .focused($promptFocused)
-                        .frame(minHeight: 54, maxHeight: 110)
-                        .padding(7)
-                        .onKeyPress(keys: [.return], phases: .down) { press in
-                            guard !press.modifiers.contains(.shift) else { return .ignored }
-                            guard canAttemptSend else { return .handled }
-                            submitPrompt()
-                            return .handled
-                        }
-                }
+                TextField(
+                    t(
+                        "Ask Codex to inspect, explain, build, or fix…",
+                        "Попросите Codex проверить, объяснить, собрать или исправить…"),
+                    text: $prompt,
+                    axis: .vertical
+                )
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .lineLimit(1...6)
+                .focused($promptFocused)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 10)
+                .frame(minHeight: 40)
+                .contentShape(Rectangle())
                 .background(CockpitPalette.panelRaised.opacity(0.92), in: RoundedRectangle(cornerRadius: 15))
                 .overlay(RoundedRectangle(cornerRadius: 15).stroke(CockpitPalette.separator.opacity(0.72)))
+                .onKeyPress(keys: [.return], phases: .down) { press in
+                    guard !press.modifiers.contains(.shift) else { return .ignored }
+                    guard canAttemptSend else { return .handled }
+                    submitPrompt()
+                    return .handled
+                }
 
                 if model.chatIsSending {
                     Button {

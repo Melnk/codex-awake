@@ -123,6 +123,7 @@ Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a 
 - privacy-safe IDs for active Codex Desktop and managed tasks;
 - a plain-language **Closed-lid mode** status, toggle, and one-time setup action;
 - a project picker and streamed Codex conversation;
+- a compact composer that grows automatically from one to six lines;
 - **New task**, **Stop**, Enter-to-send, Shift-Enter newline, and arrow-button controls;
 - approval cards for shell commands, network access, and file changes.
 
