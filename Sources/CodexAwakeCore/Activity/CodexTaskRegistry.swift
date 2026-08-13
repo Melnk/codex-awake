@@ -83,12 +83,12 @@ public actor CodexTaskRegistry {
         case .threadClosed(let threadId):
             updateManaged(threadId: threadId, now: now) { $0.status = .completed }
 
-        case .itemStarted(let threadId, _, let kind):
+        case .itemStarted(let threadId, _, let kind, _):
             updateManaged(threadId: threadId, now: now) {
                 $0.status = kind.isToolActivity ? .runningTool : .thinking
             }
 
-        case .itemCompleted(let threadId, _, let kind):
+        case .itemCompleted(let threadId, _, let kind, _):
             guard kind.isToolActivity else { break }
             updateManaged(threadId: threadId, now: now) { $0.status = .thinking }
 

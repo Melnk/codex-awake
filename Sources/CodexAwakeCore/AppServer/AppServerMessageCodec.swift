@@ -129,7 +129,8 @@ public enum AppServerMessageCodec {
             return .itemStarted(
                 threadId: threadId,
                 itemId: itemId,
-                kind: .init(wireValue: rawKind)
+                kind: .init(wireValue: rawKind),
+                activity: toolActivity(from: item, turnId: turnId, completed: false)
             )
 
         case "item/completed":
@@ -153,14 +154,17 @@ public enum AppServerMessageCodec {
             return .itemCompleted(
                 threadId: threadId,
                 itemId: itemId,
-                kind: .init(wireValue: rawKind)
+                kind: .init(wireValue: rawKind),
+                activity: toolActivity(from: item, turnId: turnId, completed: true)
             )
 
         case "error":
-            let message =
+            let detail =
                 params?["error"]?["message"]?.stringValue
                 ?? params?["message"]?.stringValue
                 ?? "Codex reported an unknown runtime error."
+            let kind = errorKind(params?["error"]?["codexErrorInfo"])
+            let message = [kind, detail].compactMap { $0 }.joined(separator: ": ")
             return .runtimeError(threadId: threadId, message: String(message.prefix(500)))
 
         default:
@@ -182,4 +186,100 @@ public enum AppServerMessageCodec {
         guard case .number(let number) = value, number.rounded() == number else { return nil }
         return Int(number)
     }
+
+    private static func toolActivity(
+        from item: JSONValue,
+        turnId: String?,
+        completed: Bool
+    ) -> CodexToolActivity? {
+        guard let id = item["id"]?.stringValue, let type = item["type"]?.stringValue else {
+            return nil
+        }
+
+        let status = toolStatus(item["status"]?.stringValue, completed: completed)
+        switch type {
+        case "commandExecution":
+            return .init(
+                id: id,
+                turnId: turnId,
+                kind: .command,
+                title: "Command",
+                status: status
+            )
+        case "fileChange":
+            let paths = item["changes"]?.arrayValue?.compactMap { $0["path"]?.stringValue } ?? []
+            return .init(
+                id: id,
+                turnId: turnId,
+                kind: .fileChange,
+                title: "File changes",
+                changedFiles: Array(paths.prefix(100)),
+                status: status
+            )
+        case "mcpToolCall":
+            let server = item["server"]?.stringValue
+            let tool = item["tool"]?.stringValue
+            return .init(
+                id: id,
+                turnId: turnId,
+                kind: .mcp,
+                title: [server, tool].compactMap { $0 }.joined(separator: " · "),
+                status: status
+            )
+        case "dynamicToolCall":
+            return .init(
+                id: id,
+                turnId: turnId,
+                kind: .mcp,
+                title: item["tool"]?.stringValue ?? "Tool",
+                status: status
+            )
+        case "webSearch":
+            return .init(
+                id: id,
+                turnId: turnId,
+                kind: .webSearch,
+                title: "Web search",
+                status: status
+            )
+        case "imageView", "imageGeneration":
+            return .init(
+                id: id,
+                turnId: turnId,
+                kind: .image,
+                title: type == "imageView" ? "View image" : "Generate image",
+                detail: bounded(item["path"]?.stringValue ?? item["savedPath"]?.stringValue),
+                status: status
+            )
+        case "collabAgentToolCall", "subAgentActivity":
+            return .init(
+                id: id,
+                turnId: turnId,
+                kind: .collaboration,
+                title: item["tool"]?.stringValue ?? "Collaboration",
+                status: status
+            )
+        default:
+            return nil
+        }
+    }
+
+    private static func toolStatus(_ rawValue: String?, completed: Bool) -> CodexToolStatus {
+        switch rawValue {
+        case "failed": .failed
+        case "declined": .declined
+        case "completed": .completed
+        default: completed ? .completed : .running
+        }
+    }
+
+    private static func bounded(_ value: String?) -> String? {
+        value.map { String($0.prefix(600)) }
+    }
+
+    private static func errorKind(_ value: JSONValue?) -> String? {
+        if let rawValue = value?.stringValue { return rawValue }
+        return value?.objectValue?.keys.sorted().first
+    }
+
 }

@@ -32,5 +32,5 @@ for _ in {1..100}; do
 done
 [[ -S "$SOCKET_PATH" ]] || { echo "Timed out waiting for App Server socket" >&2; exit 1; }
 
-echo "Running initialize/initialized and read-only thread reconciliation. No model prompt is sent."
+echo "Running initialize/initialized, model discovery, and read-only thread reconciliation. No model prompt is sent."
 swift run --disable-sandbox CodexAwakeProtocolProbe "$SOCKET_PATH"

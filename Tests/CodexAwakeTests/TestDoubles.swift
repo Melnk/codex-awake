@@ -96,8 +96,13 @@ final class ScriptedTransport: LocalWebSocketTransport, @unchecked Sendable {
             response = "{\"id\":\(id),\"result\":{}}"
         case "thread/start":
             response = "{\"id\":\(id),\"result\":{\"thread\":{\"id\":\"cockpit-thread\"}}}"
+        case "thread/resume":
+            response = "{\"id\":\(id),\"result\":{\"thread\":{\"id\":\"cockpit-thread\"}}}"
         case "turn/start":
             response = "{\"id\":\(id),\"result\":{\"turn\":{\"id\":\"cockpit-turn\",\"status\":\"inProgress\"}}}"
+        case "model/list":
+            response =
+                "{\"id\":\(id),\"result\":{\"data\":[{\"id\":\"gpt-test\",\"model\":\"gpt-test\",\"displayName\":\"GPT Test\",\"description\":\"Test model\",\"hidden\":false,\"isDefault\":true,\"defaultReasoningEffort\":\"medium\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\",\"description\":\"Fast\"},{\"reasoningEffort\":\"medium\",\"description\":\"Balanced\"}]}]}}"
         case "thread/loaded/list":
             response = "{\"id\":\(id),\"result\":{\"data\":[\"thread-1\"]}}"
         case "thread/read":

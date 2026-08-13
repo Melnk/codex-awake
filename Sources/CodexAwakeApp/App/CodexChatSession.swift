@@ -2,8 +2,15 @@ import CodexAwakeCore
 import Foundation
 
 protocol CodexChatClient: Sendable {
-    func startThread(cwd: String) async throws -> String
-    func startTurn(threadId: String, text: String, cwd: String) async throws -> String
+    func listModels() async throws -> [CodexModelOption]
+    func startThread(settings: CodexChatRequestSettings) async throws -> String
+    func resumeThread(threadId: String, settings: CodexChatRequestSettings) async throws -> String
+    func startTurn(
+        threadId: String,
+        messageID: UUID,
+        text: String,
+        settings: CodexChatRequestSettings
+    ) async throws -> String
     func interruptTurn(threadId: String, turnId: String) async throws
 }
 
@@ -11,246 +18,213 @@ extension AppServerClient: CodexChatClient {}
 
 @MainActor
 final class CodexChatSession: ObservableObject {
-    @Published private(set) var messages: [CodexChatMessage] = []
-    @Published private(set) var threadID: String?
-    @Published private(set) var turnID: String?
-    @Published private(set) var isSending = false
-    @Published private(set) var approvalRequests: [CodexApprovalRequest] = []
+    @Published var conversations: [CodexConversation] = []
+    @Published var activeConversationID: UUID?
+    @Published var turnID: String?
+    @Published var isSending = false
+    @Published var modelOptions: [CodexModelOption] = []
+    @Published var approvalRequests: [CodexApprovalRequest] = []
+    @Published var persistenceWarning: String?
 
-    private var language: AppLanguage
-    private var generationID: UUID?
-    private var approvalContinuations: [Int: CheckedContinuation<JSONValue, Never>] = [:]
+    var language: AppLanguage
+    var approvalContinuations: [Int: CheckedContinuation<JSONValue, Never>] = [:]
 
-    init(language: AppLanguage) {
+    let repository: any CodexChatPersisting
+    var client: (any CodexChatClient)?
+    var resumedThreadIDs: Set<String> = []
+    var currentMessageID: UUID?
+    var persistenceTask: Task<Void, Never>?
+    var didRestore = false
+
+    init(
+        language: AppLanguage,
+        repository: any CodexChatPersisting = FileCodexChatRepository()
+    ) {
         self.language = language
+        self.repository = repository
+    }
+
+    var messages: [CodexChatMessage] { activeConversation?.messages ?? [] }
+    var tools: [CodexToolActivity] { activeConversation?.tools ?? [] }
+    var threadID: String? { activeConversation?.threadId }
+    var queuedCount: Int { messages.count { $0.delivery == .queued } }
+    var activeConversation: CodexConversation? {
+        guard let activeConversationID else { return nil }
+        return conversations.first { $0.id == activeConversationID }
+    }
+
+    var selectedModelID: String? { activeConversation?.settings.modelID }
+    var selectedReasoningEffort: String? { activeConversation?.settings.reasoningEffort }
+    var permissionMode: CodexPermissionMode {
+        activeConversation?.settings.permissionMode ?? .workspaceWrite
+    }
+
+    var reasoningOptions: [CodexReasoningOption] {
+        guard let selectedModelID,
+            let model = modelOptions.first(where: { $0.id == selectedModelID || $0.model == selectedModelID })
+        else { return [] }
+        return model.reasoningOptions
     }
 
     func setLanguage(_ language: AppLanguage) {
         self.language = language
     }
 
+    func restore(defaultWorkspacePath: String?) async {
+        guard !didRestore else { return }
+        didRestore = true
+        do {
+            let archive = try await repository.load()
+            conversations = archive.conversations
+            activeConversationID = archive.activeConversationID
+            if !conversations.contains(where: { $0.id == activeConversationID }) {
+                activeConversationID = conversations.first?.id
+            }
+        } catch {
+            persistenceWarning = t(
+                "Previous chat history could not be restored. New chats will still work.",
+                "Не удалось восстановить прошлые чаты. Новые чаты продолжат работать."
+            )
+        }
+
+        if activeConversationID == nil, let defaultWorkspacePath {
+            createConversation(workspacePath: defaultWorkspacePath)
+        }
+    }
+
+    func attach(client: any CodexChatClient) {
+        self.client = client
+        Task { await refreshModels() }
+        Task { await drainQueue() }
+    }
+
+    func detach(_ reason: String) {
+        client = nil
+        resumedThreadIDs.removeAll()
+        failCurrentMessage(reason: reason)
+    }
+
     @discardableResult
-    func send(
+    func enqueue(
         _ prompt: String,
-        client: any CodexChatClient,
-        workspacePath: String,
+        settings: CodexChatRequestSettings,
         unavailableReason: String?
     ) -> Bool {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isSending else { return false }
-        guard unavailableReason == nil else {
-            appendSystemMessage(unavailableReason ?? t("Codex is not ready yet.", "Codex пока не готов."))
-            return false
-        }
+        guard !text.isEmpty else { return false }
+        ensureConversation(settings: settings)
+        guard let index = activeConversationIndex else { return false }
 
-        let currentGeneration = UUID()
-        generationID = currentGeneration
-        isSending = true
-        messages.append(.init(role: .user, text: text))
-
-        Task {
-            do {
-                var activeThreadID = threadID
-                if activeThreadID == nil {
-                    activeThreadID = try await client.startThread(cwd: workspacePath)
-                    guard generationID == currentGeneration else { return }
-                    threadID = activeThreadID
-                }
-                guard let activeThreadID else { throw CodexAwakeError.malformedMessage }
-                let startedTurnID = try await client.startTurn(
-                    threadId: activeThreadID,
-                    text: text,
-                    cwd: workspacePath
-                )
-                guard generationID == currentGeneration else { return }
-                turnID = startedTurnID
-            } catch {
-                guard generationID == currentGeneration else { return }
-                generationID = nil
-                isSending = false
-                appendSystemMessage(SafeDisplay.sanitizedError(error))
-            }
+        let failureReason = unavailableReason.map {
+            t(
+                "Message was not sent. \($0)",
+                "Сообщение не отправлено. \($0)"
+            )
         }
+        let message = CodexChatMessage(
+            role: .user,
+            text: text,
+            delivery: failureReason == nil ? .queued : .failed,
+            failureReason: failureReason,
+            requestSettings: settings
+        )
+        conversations[index].settings = settings
+        conversations[index].messages.append(message)
+        conversations[index].updatedAt = Date()
+        updateTitleIfNeeded(at: index, prompt: text)
+        persistSoon()
+
+        if failureReason == nil { Task { await drainQueue() } }
         return true
     }
 
-    func interrupt(client: any CodexChatClient) {
-        guard let threadID, let turnID else { return }
+    func retry(messageID: UUID, unavailableReason: String?) {
+        guard let conversationIndex = activeConversationIndex,
+            let messageIndex = conversations[conversationIndex].messages.firstIndex(where: { $0.id == messageID })
+        else { return }
+        if let unavailableReason {
+            conversations[conversationIndex].messages[messageIndex].failureReason = t(
+                "Still not sent. \(unavailableReason)",
+                "Сообщение всё ещё не отправлено. \(unavailableReason)"
+            )
+            conversations[conversationIndex].updatedAt = Date()
+            persistSoon()
+            return
+        }
+        conversations[conversationIndex].messages[messageIndex].delivery = .queued
+        conversations[conversationIndex].messages[messageIndex].failureReason = nil
+        conversations[conversationIndex].messages[messageIndex].requestSettings =
+            conversations[conversationIndex].settings
+        conversations[conversationIndex].updatedAt = Date()
+        persistSoon()
+        Task { await drainQueue() }
+    }
+
+    func interrupt() {
+        guard let client, let threadID, let turnID else { return }
         Task {
             do {
                 try await client.interruptTurn(threadId: threadID, turnId: turnID)
             } catch {
-                appendSystemMessage(SafeDisplay.sanitizedError(error))
+                appendSystemMessage(CodexChatFailurePresenter.present(error, language: language).displayText)
             }
         }
     }
 
-    func reset(client: (any CodexChatClient)?) {
-        if let client, let threadID, let turnID {
-            Task {
-                do {
-                    try await client.interruptTurn(threadId: threadID, turnId: turnID)
-                } catch {
-                    // A reset is already authoritative locally; a disconnected server needs no UI error.
-                }
-            }
+    func startNewConversation(settings: CodexChatRequestSettings) {
+        if isSending {
+            interrupt()
+            failCurrentMessage(
+                reason: t("Stopped to start a new chat.", "Остановлено для создания нового чата."))
         }
-        generationID = nil
-        threadID = nil
+        createConversation(settings: settings)
+    }
+
+    func selectConversation(_ id: UUID) {
+        guard !isSending, let index = conversations.firstIndex(where: { $0.id == id }) else { return }
+        activeConversationID = id
+        conversations[index].updatedAt = Date()
         turnID = nil
-        isSending = false
-        messages.removeAll()
+        currentMessageID = nil
+        persistSoon()
+        Task { await drainQueue() }
     }
 
-    func handle(_ event: AppServerEvent) {
-        switch event {
-        case .agentMessageDelta(let eventThreadID, _, let itemID, let delta):
-            guard eventThreadID == threadID else { return }
-            if let index = messages.firstIndex(where: { $0.itemId == itemID }) {
-                messages[index].text += delta
-                messages[index].isStreaming = true
+    func updateWorkspace(_ workspacePath: String) {
+        let settings =
+            activeConversation?.settings
+            ?? .init(workspacePath: workspacePath)
+        var updated = settings
+        updated.workspacePath = workspacePath
+        startNewConversation(settings: updated)
+    }
+
+    func selectModel(_ modelID: String?) {
+        updateSettings { settings in
+            settings.modelID = modelID
+            if let modelID,
+                let model = modelOptions.first(where: { $0.id == modelID || $0.model == modelID })
+            {
+                settings.reasoningEffort = model.defaultReasoningEffort
             } else {
-                messages.append(
-                    .init(
-                        role: .assistant,
-                        text: delta,
-                        itemId: itemID,
-                        isStreaming: true
-                    ))
+                settings.reasoningEffort = nil
             }
-
-        case .agentMessageCompleted(let eventThreadID, _, let itemID, let text, let phase):
-            guard eventThreadID == threadID else { return }
-            if let index = messages.firstIndex(where: { $0.itemId == itemID }) {
-                messages[index].text = text
-                messages[index].phase = phase
-                messages[index].isStreaming = false
-            } else {
-                messages.append(
-                    .init(
-                        role: .assistant,
-                        text: text,
-                        itemId: itemID,
-                        phase: phase
-                    ))
-            }
-
-        case .turnCompleted(let key, let status):
-            guard key.threadId == threadID,
-                turnID == nil || key.turnId == turnID
-            else { return }
-            generationID = nil
-            turnID = nil
-            isSending = false
-            for index in messages.indices where messages[index].isStreaming {
-                messages[index].isStreaming = false
-            }
-            if let status, status != "completed", status != "interrupted" {
-                appendSystemMessage(
-                    t(
-                        "Codex turn ended with status: \(status).",
-                        "Ход Codex завершён со статусом: \(status)."
-                    ))
-            }
-
-        case .runtimeError(let eventThreadID, let message):
-            guard eventThreadID == nil || eventThreadID == threadID else { return }
-            appendSystemMessage(message)
-
-        default:
-            break
         }
     }
 
-    func handleServerRequest(_ request: AppServerServerRequest) async -> JSONValue? {
-        let kind: CodexApprovalKind
-        switch request.method {
-        case "item/commandExecution/requestApproval": kind = .command
-        case "item/fileChange/requestApproval": kind = .fileChange
-        default: return nil
-        }
-
-        let approval = CodexApprovalRequest(
-            id: request.id,
-            kind: kind,
-            title: approvalTitle(kind: kind, params: request.params),
-            detail: approvalDetail(kind: kind, params: request.params),
-            threadId: request.params?["threadId"]?.stringValue,
-            turnId: request.params?["turnId"]?.stringValue
-        )
-        return await withCheckedContinuation { continuation in
-            approvalRequests.append(approval)
-            approvalContinuations[request.id] = continuation
-        }
+    func selectReasoningEffort(_ effort: String?) {
+        updateSettings { $0.reasoningEffort = effort }
     }
 
-    func resolve(_ request: CodexApprovalRequest, decision: CodexApprovalDecision) {
-        approvalRequests.removeAll { $0.id == request.id }
-        approvalContinuations.removeValue(forKey: request.id)?.resume(
-            returning: .string(decision.rawValue))
-    }
-
-    func cancelPendingApprovals() {
-        let continuations = approvalContinuations.values
-        approvalContinuations.removeAll()
-        approvalRequests.removeAll()
-        for continuation in continuations {
-            continuation.resume(returning: .string(CodexApprovalDecision.cancel.rawValue))
-        }
-    }
-
-    func markDisconnected(_ message: String) {
-        guard isSending else { return }
-        generationID = nil
-        turnID = nil
-        isSending = false
-        appendSystemMessage(message)
+    func selectPermissionMode(_ mode: CodexPermissionMode) {
+        updateSettings { $0.permissionMode = mode }
     }
 
     func markUnavailable(_ message: String) {
         appendSystemMessage(message)
     }
 
-    private func approvalTitle(kind: CodexApprovalKind, params: JSONValue?) -> String {
-        if let host = params?["networkApprovalContext"]?["host"]?.stringValue {
-            return t("Allow network access to \(host)?", "Разрешить сетевой доступ к \(host)?")
-        }
-        return kind == .command
-            ? t("Allow this command?", "Разрешить эту команду?")
-            : t("Allow these file changes?", "Разрешить эти изменения файлов?")
-    }
-
-    private func approvalDetail(kind: CodexApprovalKind, params: JSONValue?) -> String {
-        if let reason = params?["reason"]?.stringValue, !reason.isEmpty {
-            return String(reason.prefix(600))
-        }
-        if kind == .command {
-            if let command = params?["command"]?.stringValue {
-                return String(command.prefix(600))
-            }
-            if let command = params?["command"]?.arrayValue?.compactMap(\.stringValue), !command.isEmpty {
-                return String(command.joined(separator: " ").prefix(600))
-            }
-            return t(
-                "Codex wants to run a command in the selected workspace.",
-                "Codex хочет выполнить команду в выбранном проекте."
-            )
-        }
-        if let root = params?["grantRoot"]?.stringValue {
-            return t("Codex wants to write inside \(root).", "Codex хочет записать данные в \(root).")
-        }
-        return t(
-            "Codex wants to apply file changes in the selected workspace.",
-            "Codex хочет изменить файлы в выбранном проекте."
-        )
-    }
-
-    private func appendSystemMessage(_ text: String) {
-        guard messages.last?.role != .system || messages.last?.text != text else { return }
-        messages.append(.init(role: .system, text: String(text.prefix(500))))
-    }
-
-    private func t(_ english: String, _ russian: String) -> String {
+    func t(_ english: String, _ russian: String) -> String {
         language.text(english, russian)
     }
 }

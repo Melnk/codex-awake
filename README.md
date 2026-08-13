@@ -127,11 +127,21 @@ Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a 
 - a draggable split view for resizing the left control deck and the Codex chat;
 - a plain-language **Closed-lid mode** status, toggle, and one-time setup action;
 - a project picker and streamed Codex conversation;
-- a compact composer that grows automatically from one to six lines;
-- **New task**, **Stop**, Enter-to-send, Shift-Enter newline, and arrow-button controls;
-- approval cards for shell commands, network access, and file changes.
+- saved cockpit chat history with **New chat** and continuation through `thread/resume`;
+- a reliable message queue while Codex is busy, plus visible sent/queued/failed delivery states;
+- model, reasoning-effort, and read-only/project/full-access selectors based on `model/list`;
+- a resizable activity pane for running tools and changed-file paths (never file contents or diffs);
+- a compact composer that grows automatically from one to seven lines;
+- **New chat**, **Stop**, **Retry**, Enter-to-send, Shift-Enter newline, and queue controls;
+- approval cards for shell commands, network access, file changes, and additional permissions.
 
 The cockpit uses the authenticated [Codex App Server](https://learn.chatgpt.com/docs/app-server), not a separately stored API key. Select a project folder before starting a task. Codex is given workspace-write access to that folder and uses the installed runtime's `on-request` approval policy; approval prompts remain visible while the task is active.
+
+### Version 1.8 / Версия 1.8
+
+**English.** The built-in chat is now recoverable and explicit about delivery. Responses stream live; messages sent while Codex is busy wait in order; and every request is either accepted by App Server or remains visible with a clear reason and **Retry**. Use **History** to continue cockpit-created tasks after restarting CodexAwake. Select the project, model, reasoning effort, and permissions before sending. The lower resizable pane shows running tools and changed-file paths without storing diffs, command output, or file contents. Full access requires an additional confirmation.
+
+**Русский.** Встроенный чат теперь восстанавливается и явно показывает состояние доставки. Ответ поступает потоком; сообщения, отправленные во время работы Codex, ждут своей очереди; каждый запрос либо принимается App Server, либо остаётся в чате с понятной причиной и кнопкой **«Повторить»**. Через **«Историю»** можно продолжить задачи, созданные во встроенном чате, после перезапуска CodexAwake. Перед отправкой выбираются проект, модель, глубина рассуждений и права доступа. В нижней растягиваемой панели видны инструменты и пути изменённых файлов, но не diff, вывод команд или содержимое файлов. Полный доступ требует отдельного подтверждения.
 
 ### Version 1.7 / Версия 1.7
 

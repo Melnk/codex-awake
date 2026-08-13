@@ -129,7 +129,16 @@ final class AppModel: ObservableObject {
             self?.handleCodexDesktopSnapshot(snapshot)
         }
         startClosedLidStatusMonitoring()
-        Task { await startManagedServer() }
+        Task {
+            await chat.restore(defaultWorkspacePath: workspacePath)
+            if let restoredWorkspace = chat.activeConversation?.settings.workspacePath,
+                FileManager.default.fileExists(atPath: restoredWorkspace)
+            {
+                workspacePath = restoredWorkspace
+                preferences.setWorkspacePath(restoredWorkspace)
+            }
+            await startManagedServer()
+        }
     }
 
     func refreshSystemIntegrationStatus() {
@@ -171,7 +180,7 @@ final class AppModel: ObservableObject {
     func stopServer() {
         Task {
             chat.cancelPendingApprovals()
-            chat.markDisconnected(
+            chat.detach(
                 t("The managed Codex server was stopped.", "Управляемый сервер Codex остановлен."))
             connectionLoopTask?.cancel()
             connectionLoopTask = nil
@@ -184,7 +193,7 @@ final class AppModel: ObservableObject {
     func restartServer() {
         Task {
             chat.cancelPendingApprovals()
-            chat.markDisconnected(
+            chat.detach(
                 t("The managed Codex server is restarting.", "Управляемый сервер Codex перезапускается."))
             await client?.disconnect()
             client = nil
@@ -503,32 +512,71 @@ final class AppModel: ObservableObject {
         if panel.runModal() == .OK, let path = panel.url?.standardizedFileURL.path {
             workspacePath = path
             preferences.setWorkspacePath(path)
-            newChat()
+            chat.updateWorkspace(path)
         }
     }
 
     @discardableResult
     func sendPrompt(_ prompt: String) -> Bool {
-        guard let workspacePath, appServerState == .running, let client else {
+        guard let workspacePath else {
             chat.markUnavailable(
                 chatUnavailableReason ?? t("Codex is not ready yet.", "Codex пока не готов."))
             return false
         }
-        return chat.send(
-            prompt,
-            client: client,
+        let settings = CodexChatRequestSettings(
             workspacePath: workspacePath,
+            modelID: chat.selectedModelID,
+            reasoningEffort: chat.selectedReasoningEffort,
+            permissionMode: chat.permissionMode
+        )
+        return chat.enqueue(
+            prompt,
+            settings: settings,
             unavailableReason: chatUnavailableReason
         )
     }
 
     func interruptChat() {
-        guard let client else { return }
-        chat.interrupt(client: client)
+        chat.interrupt()
     }
 
     func newChat() {
-        chat.reset(client: client)
+        guard let workspacePath else {
+            chooseWorkspace()
+            return
+        }
+        chat.startNewConversation(
+            settings: .init(
+                workspacePath: workspacePath,
+                modelID: chat.selectedModelID,
+                reasoningEffort: chat.selectedReasoningEffort,
+                permissionMode: chat.permissionMode
+            )
+        )
+    }
+
+    func continueChat(_ id: UUID) {
+        chat.selectConversation(id)
+        if let path = chat.activeConversation?.settings.workspacePath {
+            workspacePath = path
+            preferences.setWorkspacePath(path)
+        }
+    }
+
+    func retryMessage(_ id: UUID) {
+        chat.retry(messageID: id, unavailableReason: chatUnavailableReason)
+    }
+
+    func setChatModel(_ modelID: String?) {
+        chat.selectModel(modelID)
+    }
+
+    func setChatReasoningEffort(_ effort: String?) {
+        chat.selectReasoningEffort(effort)
+    }
+
+    func setChatPermissionMode(_ mode: CodexPermissionMode) {
+        chat.selectPermissionMode(mode)
     }
 
     func resolveApproval(_ request: CodexApprovalRequest, decision: CodexApprovalDecision) {
@@ -561,9 +609,19 @@ final class AppModel: ObservableObject {
     }
 
     var chatMessages: [CodexChatMessage] { chat.messages }
+    var chatTools: [CodexToolActivity] { chat.tools }
+    var chatConversations: [CodexConversation] { chat.conversations }
+    var activeChatConversationID: UUID? { chat.activeConversationID }
     var chatThreadID: String? { chat.threadID }
     var chatTurnID: String? { chat.turnID }
     var chatIsSending: Bool { chat.isSending }
+    var chatQueuedCount: Int { chat.queuedCount }
+    var chatModelOptions: [CodexModelOption] { chat.modelOptions }
+    var chatSelectedModelID: String? { chat.selectedModelID }
+    var chatReasoningOptions: [CodexReasoningOption] { chat.reasoningOptions }
+    var chatSelectedReasoningEffort: String? { chat.selectedReasoningEffort }
+    var chatPermissionMode: CodexPermissionMode { chat.permissionMode }
+    var chatPersistenceWarning: String? { chat.persistenceWarning }
     var approvalRequests: [CodexApprovalRequest] { chat.approvalRequests }
 
     func requestQuit() {
@@ -577,6 +635,7 @@ final class AppModel: ObservableObject {
         closedLidStatusTask?.cancel()
         closedLidStatusTask = nil
         chat.cancelPendingApprovals()
+        await chat.flushPersistence()
         connectionLoopTask?.cancel()
         connectionLoopTask = nil
         await client?.disconnect()
@@ -639,6 +698,7 @@ final class AppModel: ObservableObject {
                 )
                 try await newClient.connect()
                 client = newClient
+                chat.attach(client: newClient)
                 attempt = 0
                 appServerState = .running
                 lastSafeError = nil
@@ -675,7 +735,8 @@ final class AppModel: ObservableObject {
             chat.handle(event)
             return
         case .itemStarted, .itemCompleted:
-            // Item lifecycle changes task status but not the power tracker.
+            // Item lifecycle changes the task status and the active cockpit timeline.
+            chat.handle(event)
             return
         default:
             break
@@ -696,7 +757,7 @@ final class AppModel: ObservableObject {
         guard !isShuttingDown else { return }
         lastSafeError = String(reason.prefix(300))
         chat.cancelPendingApprovals()
-        chat.markDisconnected(
+        chat.detach(
             t(
                 "Connection to the managed Codex server was lost.",
                 "Соединение с управляемым сервером Codex потеряно."))

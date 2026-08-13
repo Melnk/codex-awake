@@ -2,7 +2,7 @@ import AppKit
 import CodexAwakeCore
 import SwiftUI
 
-private enum CockpitPalette {
+enum CockpitPalette {
     static let canvas = Color(nsColor: .windowBackgroundColor)
     static let panel = Color(nsColor: .controlBackgroundColor)
     static let panelRaised = Color(nsColor: .textBackgroundColor)
@@ -20,9 +20,6 @@ private enum CockpitPalette {
 struct CockpitView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openWindow) private var openWindow
-    @State private var prompt = ""
-    @FocusState private var promptFocused: Bool
-
     var body: some View {
         ZStack {
             CockpitBackground()
@@ -426,208 +423,7 @@ struct CockpitView: View {
     }
 
     private var chatDeck: some View {
-        VStack(spacing: 0) {
-            chatHeader
-            chatTimeline
-            composer
-        }
-        .padding(18)
-        .background(CockpitPanel(cornerRadius: 28))
-    }
-
-    private var chatHeader: some View {
-        HStack(spacing: 13) {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    Text(t("Chat with Codex", "Чат с Codex"))
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    StatusPill(
-                        text: model.appServerState == .running ? t("READY", "ГОТОВ") : t("OFFLINE", "НЕ В СЕТИ"),
-                        color: serverAccent)
-                }
-                Text(
-                    t(
-                        "Your local Codex session — no separate API key",
-                        "Локальная сессия Codex — отдельный API-ключ не нужен")
-                )
-                .font(.caption)
-                .foregroundStyle(CockpitPalette.muted)
-            }
-            Spacer()
-
-            Button {
-                model.chooseWorkspace()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "folder")
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(t("PROJECT", "ПРОЕКТ"))
-                            .font(.system(size: 8, weight: .semibold))
-                            .tracking(1)
-                        Text(workspaceName)
-                            .font(.system(size: 11, weight: .medium))
-                            .lineLimit(1)
-                    }
-                }
-            }
-            .buttonStyle(CockpitSecondaryButtonStyle())
-            .help(model.workspacePath ?? t("Choose a project folder", "Выберите папку проекта"))
-
-            Button {
-                model.newChat()
-                promptFocused = true
-            } label: {
-                Label(t("New task", "Новая задача"), systemImage: "plus")
-            }
-            .buttonStyle(CockpitSecondaryButtonStyle())
-        }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 11)
-    }
-
-    private var chatTimeline: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 15) {
-                    if model.chatMessages.isEmpty {
-                        emptyChat
-                    } else {
-                        ForEach(model.chatMessages) { message in
-                            ChatMessageRow(message: message, language: model.appLanguage)
-                                .id(message.id)
-                        }
-                    }
-
-                    if model.chatIsSending, !model.chatMessages.contains(where: { $0.isStreaming }) {
-                        ThinkingIndicator(language: model.appLanguage)
-                            .id("thinking")
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 22)
-            }
-            .background(CockpitPalette.canvas.opacity(0.56), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).stroke(CockpitPalette.separator.opacity(0.58)))
-            .onChange(of: model.chatMessages.count) { _, _ in
-                if let last = model.chatMessages.last {
-                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
-                }
-            }
-            .onChange(of: model.chatIsSending) { _, sending in
-                if sending {
-                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("thinking", anchor: .bottom) }
-                }
-            }
-        }
-    }
-
-    private var emptyChat: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(CockpitPalette.ice.opacity(0.06))
-                    .frame(width: 92, height: 92)
-                Circle()
-                    .stroke(CockpitPalette.silver.opacity(0.22), lineWidth: 1)
-                    .frame(width: 72, height: 72)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 38, weight: .ultraLight))
-                    .foregroundStyle(CockpitPalette.silver)
-            }
-            Text(
-                model.workspacePath == nil
-                    ? t("Choose a project", "Выберите проект")
-                    : t("What would you like to build?", "Что вы хотите сделать?")
-            )
-            .font(.system(size: 20, weight: .semibold, design: .rounded))
-            Text(emptyChatDescription)
-                .font(.system(size: 12))
-                .foregroundStyle(CockpitPalette.muted)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 430)
-            if model.workspacePath == nil {
-                Button(t("Choose Project…", "Выбрать проект…")) { model.chooseWorkspace() }
-                    .buttonStyle(CockpitPrimaryButtonStyle())
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 80)
-    }
-
-    private var composer: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .bottom, spacing: 12) {
-                TextField(
-                    t(
-                        "Ask Codex to inspect, explain, build, or fix…",
-                        "Попросите Codex проверить, объяснить, собрать или исправить…"),
-                    text: $prompt,
-                    axis: .vertical
-                )
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .lineLimit(1...6)
-                .focused($promptFocused)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 10)
-                .frame(minHeight: 40)
-                .contentShape(Rectangle())
-                .background(CockpitPalette.panelRaised.opacity(0.92), in: RoundedRectangle(cornerRadius: 15))
-                .overlay(RoundedRectangle(cornerRadius: 15).stroke(CockpitPalette.separator.opacity(0.72)))
-                .onKeyPress(keys: [.return], phases: .down) { press in
-                    if press.modifiers.contains(.shift) {
-                        prompt.append("\n")
-                        return .handled
-                    }
-                    guard canAttemptSend else { return .handled }
-                    submitPrompt()
-                    return .handled
-                }
-
-                if model.chatIsSending {
-                    Button {
-                        model.interruptChat()
-                    } label: {
-                        Image(systemName: "stop.fill")
-                            .frame(width: 38, height: 38)
-                    }
-                    .buttonStyle(CockpitDangerButtonStyle())
-                    .disabled(model.chatTurnID == nil)
-                    .help(t("Stop current task", "Остановить текущую задачу"))
-                } else {
-                    Button {
-                        submitPrompt()
-                    } label: {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 38, height: 38)
-                    }
-                    .buttonStyle(CockpitPrimaryButtonStyle())
-                    .disabled(!canAttemptSend)
-                    .help(model.chatUnavailableReason ?? t("Send to Codex", "Отправить в Codex"))
-                }
-            }
-
-            HStack(spacing: 6) {
-                Image(systemName: model.chatUnavailableReason == nil ? "return" : "exclamationmark.circle")
-                Text(composerStatusText)
-            }
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(model.chatUnavailableReason == nil ? CockpitPalette.muted : CockpitPalette.amber)
-            .padding(.leading, 9)
-        }
-        .padding(.top, 13)
-        .padding(.horizontal, 5)
-    }
-
-    private var canAttemptSend: Bool {
-        !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !model.chatIsSending
-    }
-
-    private var composerStatusText: String {
-        model.chatUnavailableReason
-            ?? t("Enter to send · Shift+Enter for a new line", "Enter — отправить · Shift+Enter — новая строка")
+        CodexChatView()
     }
 
     private var codexDesktopPresenceDescription: String {
@@ -755,33 +551,6 @@ struct CockpitView: View {
         }
     }
 
-    private var workspaceName: String {
-        guard let workspacePath = model.workspacePath else { return t("Choose folder", "Выбрать папку") }
-        return URL(fileURLWithPath: workspacePath).lastPathComponent
-    }
-
-    private var emptyChatDescription: String {
-        if model.workspacePath == nil {
-            return t(
-                "Choose the folder Codex should work in. It will ask before sensitive actions.",
-                "Выберите папку для работы Codex. Перед важными действиями он спросит разрешение.")
-        }
-        if model.appServerState != .running {
-            return t(
-                "Codex is connecting. This usually takes only a moment.",
-                "Codex подключается. Обычно это занимает несколько секунд.")
-        }
-        return t(
-            "Use your existing Codex sign-in right here. CodexAwake never stores an API key.",
-            "Используйте текущий вход в Codex. CodexAwake не хранит API-ключ.")
-    }
-
-    private func submitPrompt() {
-        if model.sendPrompt(prompt) {
-            prompt = ""
-        }
-    }
-
     private func abbreviated(_ value: String) -> String {
         guard value.count > 14 else { return value }
         return "\(value.prefix(8))…\(value.suffix(4))"
@@ -888,94 +657,6 @@ private struct TaskOverviewRow: View {
     private func abbreviated(_ value: String) -> String {
         guard value.count > 12 else { return value }
         return "\(value.prefix(6))…\(value.suffix(4))"
-    }
-}
-
-private struct ChatMessageRow: View {
-    let message: CodexChatMessage
-    let language: AppLanguage
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            if message.role == .user { Spacer(minLength: 70) }
-
-            if message.role == .assistant {
-                avatar(systemName: "sparkles", color: CockpitPalette.ice)
-            } else if message.role == .system {
-                avatar(systemName: "exclamationmark.triangle", color: CockpitPalette.amber)
-            }
-
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 7) {
-                    Text(roleLabel)
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .tracking(1.2)
-                        .foregroundStyle(roleColor)
-                    if message.isStreaming {
-                        ProgressView()
-                            .controlSize(.mini)
-                    }
-                    Spacer()
-                }
-                Text(renderedText)
-                    .font(.system(size: 13))
-                    .foregroundStyle(CockpitPalette.silver)
-                    .textSelection(.enabled)
-                    .lineSpacing(3)
-            }
-            .padding(13)
-            .frame(maxWidth: message.role == .user ? 520 : .infinity, alignment: .leading)
-            .background(bubbleColor, in: RoundedRectangle(cornerRadius: 15))
-            .overlay(RoundedRectangle(cornerRadius: 15).stroke(borderColor))
-
-            if message.role != .user { Spacer(minLength: 34) }
-        }
-    }
-
-    private var renderedText: AttributedString {
-        (try? AttributedString(markdown: message.text)) ?? AttributedString(message.text)
-    }
-
-    private var roleLabel: String {
-        switch message.role {
-        case .user: language.text("YOU", "ВЫ")
-        case .assistant:
-            message.phase == "commentary" ? language.text("CODEX · PROGRESS", "CODEX · ХОД РАБОТЫ") : "CODEX"
-        case .system: language.text("SYSTEM", "СИСТЕМА")
-        }
-    }
-
-    private var roleColor: Color {
-        switch message.role {
-        case .user: CockpitPalette.silver
-        case .assistant: CockpitPalette.ice
-        case .system: CockpitPalette.amber
-        }
-    }
-
-    private var bubbleColor: Color {
-        switch message.role {
-        case .user: CockpitPalette.iceDeep.opacity(0.19)
-        case .assistant: CockpitPalette.panelRaised.opacity(0.77)
-        case .system: CockpitPalette.amber.opacity(0.075)
-        }
-    }
-
-    private var borderColor: Color {
-        switch message.role {
-        case .user: CockpitPalette.ice.opacity(0.22)
-        case .assistant: CockpitPalette.silver.opacity(0.12)
-        case .system: CockpitPalette.amber.opacity(0.22)
-        }
-    }
-
-    private func avatar(systemName: String, color: Color) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(color)
-            .frame(width: 27, height: 27)
-            .background(color.opacity(0.10), in: Circle())
-            .overlay(Circle().stroke(color.opacity(0.25)))
     }
 }
 
@@ -1099,21 +780,6 @@ private struct StatusPill: View {
         .padding(.vertical, 5)
         .background(color.opacity(0.09), in: Capsule())
         .overlay(Capsule().stroke(color.opacity(0.23)))
-    }
-}
-
-private struct ThinkingIndicator: View {
-    let language: AppLanguage
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ProgressView().controlSize(.small).tint(CockpitPalette.ice)
-            Text(language.text("Codex is working…", "Codex работает…"))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(CockpitPalette.muted)
-            Spacer()
-        }
-        .padding(.horizontal, 10)
     }
 }
 
@@ -1272,7 +938,7 @@ private struct CockpitBackground: View {
     }
 }
 
-private struct CockpitPanel: View {
+struct CockpitPanel: View {
     let cornerRadius: CGFloat
 
     var body: some View {
@@ -1298,7 +964,7 @@ private struct CockpitPanel: View {
     }
 }
 
-private struct CockpitPrimaryButtonStyle: ButtonStyle {
+struct CockpitPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -1319,7 +985,7 @@ private struct CockpitPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-private struct CockpitSecondaryButtonStyle: ButtonStyle {
+struct CockpitSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -1333,7 +999,7 @@ private struct CockpitSecondaryButtonStyle: ButtonStyle {
     }
 }
 
-private struct CockpitDangerButtonStyle: ButtonStyle {
+struct CockpitDangerButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)

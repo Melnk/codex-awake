@@ -78,8 +78,18 @@ public enum AppServerEvent: Equatable, Sendable {
     case turnCompleted(TurnKey, status: String?)
     case threadStatusChanged(threadId: String, status: ThreadRuntimeStatus)
     case threadClosed(threadId: String)
-    case itemStarted(threadId: String, itemId: String, kind: CodexTaskItemKind)
-    case itemCompleted(threadId: String, itemId: String, kind: CodexTaskItemKind)
+    case itemStarted(
+        threadId: String,
+        itemId: String,
+        kind: CodexTaskItemKind,
+        activity: CodexToolActivity?
+    )
+    case itemCompleted(
+        threadId: String,
+        itemId: String,
+        kind: CodexTaskItemKind,
+        activity: CodexToolActivity?
+    )
     case agentMessageDelta(threadId: String, turnId: String, itemId: String, delta: String)
     case agentMessageCompleted(threadId: String, turnId: String, itemId: String, text: String, phase: String?)
     case runtimeError(threadId: String?, message: String)

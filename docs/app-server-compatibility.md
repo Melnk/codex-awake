@@ -14,7 +14,7 @@ codex app-server generate-json-schema --out .build/codex-schema/json
 codex app-server generate-ts --out .build/codex-schema/typescript
 ```
 
-On the development machine used for this checkout on 2026-08-11, the standalone `codex` command was absent from PATH, but CodexAwake discovered `/Applications/ChatGPT.app/Contents/Resources/codex` (`codex-cli 0.147.0-alpha.6.5`). That bundled runtime passed the capability probes, generated the local schema, launched a real Unix-socket App Server from the GUI application, and completed `initialize`/`initialized` without sending a model prompt. No minimum version is inferred from that single runtime. `.build/codex-schema/` is ignored and generated dumps must not be committed unless a small compile-time model is deliberately selected.
+On the development machine used for this checkout, the standalone `codex` command was absent from PATH, but CodexAwake discovered `/Applications/ChatGPT.app/Contents/Resources/codex`. On 2026-08-13 that bundled runtime passed the capability probes, generated the local schema, launched a real Unix-socket App Server, completed `initialize`/`initialized`, reconciled loaded-thread metadata, and returned seven picker-visible models from `model/list` without sending a model prompt. No minimum version is inferred from one runtime. `.build/codex-schema/` is ignored and generated dumps must not be committed unless a small compile-time model is deliberately selected.
 
 The implementation was compared with the current [official Codex App Server documentation](https://learn.chatgpt.com/docs/app-server), which documents:
 

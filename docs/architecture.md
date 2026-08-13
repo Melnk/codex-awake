@@ -6,9 +6,13 @@
 
 `UnixWebSocketTransport` implements RFC 6455 client framing and the HTTP Upgrade handshake directly over `AF_UNIX`. It validates `Sec-WebSocket-Accept`, masks client frames, handles ping/pong/close, limits payloads to 16 MiB, and exposes no TCP listener.
 
-`AppServerClient` performs `initialize` then `initialized`, allocates monotonically increasing request IDs, matches responses to continuations, times out pending calls, converts relevant notifications into typed events, routes command/file approval requests to the cockpit, rejects server requests it cannot serve, and survives malformed JSON.
+`AppServerClient` performs `initialize` then `initialized`, allocates monotonically increasing request IDs, matches responses to continuations, times out pending calls, converts relevant notifications into typed events, routes command/file/permission approval requests to the cockpit, rejects server requests it cannot serve, and survives malformed JSON. Chat configuration is discovered with `model/list`; new and stored conversations use `thread/start` and `thread/resume` respectively.
 
-The cockpit starts a conversation with `thread/start` using the installed runtime's protocol values `workspace-write` and `on-request`, sends user input with `turn/start`, renders `item/agentMessage/delta`, treats the final `item/completed` agent message as authoritative, interrupts with `turn/interrupt`, and answers command/file approval requests. Each turn uses the selected folder as its only explicit writable root. Enter submits, Shift-Enter inserts a newline, and rejected preconditions leave the draft intact while adding a visible system explanation.
+`CodexChatSession` is the main-actor chat state machine. It gives every user message a delivery state (`queued`, `sending`, `sent`, or `failed`), serializes queued turns, preserves the client message UUID across retries, resumes its own saved thread after reconnect or restart, and consumes streamed agent/item events. A failed message stays visible with a plain-language reason and retry action. Enter submits or queues, Shift-Enter inserts a newline, and `turn/interrupt` stops the active turn.
+
+`FileCodexChatRepository` is the only chat persistence component. It stores at most 30 cockpit-created conversations under Application Support, limits each conversation to 500 messages and 200 tool records, writes the directory/file with modes `0700`/`0600`, and converts an interrupted `sending` message back to `queued` during restore. It never imports global Codex history. The selected project, model, reasoning effort, permission mode, own thread ID, messages, changed-file paths, and generic tool lifecycle are persisted; approval continuations and tool output are not.
+
+The cockpit requests `on-request` approval and lets the user select read-only, project-write, or explicitly confirmed full-access sandboxing. Project-write supplies only the selected folder as an explicit writable root. Model and reasoning values come from `model/list`, avoiding hard-coded catalog assumptions. Command, file-change, and permission requests block on an in-app approval card. Permission responses grant only the subset requested by App Server.
 
 `ThreadActivityTracker` is an actor and owns:
 
@@ -21,7 +25,7 @@ Lifecycle events provide low latency. Chat-only item events do not mutate activi
 
 `CodexTaskRegistry` is a separate actor for the user-facing 1.7 task center. It combines managed App Server metadata with Desktop rollout metadata, normalizes lifecycle events into waiting/thinking/tool/approval/completed/error, keeps a bounded 20-item recent history, and supplies the Dock/menu counters. Managed reconciliation requests `thread/read(includeTurns: false)` only for IDs returned by this server's `thread/loaded/list`; it does not query the global Codex history. The decoder retains only ID, cwd, timestamps, and runtime status. The server's `name`, `preview`, and thread turns are intentionally ignored; project names are derived locally from cwd. Desktop records contain only root session ID, cwd, timestamp, modification time, and the final lifecycle marker. Transition notifications are produced outside the registry so the state machine remains independent from AppKit and UserNotifications.
 
-Selecting any task opens the installed Codex/ChatGPT app with its registered local `codex://threads/<id>` deep link. CodexAwake therefore does not resume or request the selected conversation. The cockpit uses a native `HSplitView`, so the task/control column and chat can be resized without custom pointer handling.
+Selecting a task in the activity center opens the installed Codex/ChatGPT app with its registered local `codex://threads/<id>` deep link. This remains separate from the cockpit history: CodexAwake resumes only thread IDs created and saved by its own chat. The cockpit uses native `HSplitView` and `VSplitView`, so the control column, conversation, and tool activity can be resized without custom pointer handling.
 
 `CodexDesktopRolloutScanner` enumerates local JSONL rollouts, decodes only the first `session_meta` record, accepts only root records with `source = vscode` and `originator = Codex Desktop`, and searches backwards in bounded chunks for the latest exact `task_started` or `task_complete` marker. It does not parse message contents. Markers older than the current Desktop app launch are ignored so a crash cannot create permanent false activity.
 
@@ -59,7 +63,7 @@ An accepting socket, foreign owner, directory, symlink target mismatch, or regul
 
 ## Privacy boundary
 
-The activity path extracts method, request ID, thread ID, turn ID, item ID/type, status type, active flags, working folder, and timestamps. The `thread.name` and `thread.preview` fields are not decoded. The cockpit separately renders user text and streamed agent messages for its current conversation. These contents are not forwarded to Diagnostics or OSLog. Diffs, tool output, terminal output, command text, and file contents are not rendered or logged. Diagnostics abbreviate identifiers and sanitize errors to one line/300 characters.
+The activity path extracts method, request ID, thread ID, turn ID, item ID/type, status type, active flags, working folder, and timestamps. The `thread.name` and `thread.preview` fields are not decoded. The cockpit separately renders and locally persists user text and streamed agent messages only for conversations created in that cockpit. These contents are not forwarded to Diagnostics or OSLog. Diffs, tool output, terminal output, command text, and file contents are not retained or logged; the activity pane retains only tool names and changed-file paths. An active approval card can show the bounded command or reason that App Server explicitly asks the user to review. Diagnostics abbreviate identifiers and sanitize errors to one line/300 characters.
 
 CodexAwake has no telemetry and creates no external network session. The supervised Codex process retains its ordinary responsibility for authenticated upstream Codex communication.
 
@@ -77,5 +81,8 @@ SwiftPM builds the main executable, helper executable, and tests. `scripts/build
 - Repeated/out-of-order events: set semantics and reconciliation converge without extra assertions.
 - Application quit: termination is delayed until client, child, socket, and assertion shutdown complete.
 - Missing/rejected Closed-Lid helper: the ordinary idle assertion remains held; the UI reports a helper-required/update state.
+- Chat request rejected: the user message remains visible as failed with a localized reason and Retry action.
+- Disconnect during a turn: that message becomes failed, later queued messages remain recoverable, and the saved thread is resumed after reconnect.
+- Restart during queued delivery: a persisted `sending` state is restored as `queued`; no draft silently disappears.
 - Main-app crash: the root lease expires in at most 120 seconds and restores the saved power policy.
 - Helper crash/restart: persisted lease expiries are reloaded; expired state is restored before new work is accepted.

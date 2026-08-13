@@ -10,7 +10,12 @@ final class CodexTaskRegistryTests: XCTestCase {
 
         _ = await registry.apply(.turnStarted(key), now: start)
         var snapshot = await registry.apply(
-            .itemStarted(threadId: "thread-a", itemId: "item-a", kind: .commandExecution),
+            .itemStarted(
+                threadId: "thread-a",
+                itemId: "item-a",
+                kind: .commandExecution,
+                activity: nil
+            ),
             now: start.addingTimeInterval(2)
         )
         XCTAssertEqual(snapshot.active.first?.status, .runningTool)

@@ -105,15 +105,34 @@ public actor AppServerClient {
         return (ids, statuses, summaries)
     }
 
+    public func listModels() async throws -> [CodexModelOption] {
+        let result = try await request(
+            method: "model/list",
+            params: .object([
+                "limit": .number(100),
+                "includeHidden": .bool(false),
+            ])
+        )
+        return result["data"]?.arrayValue?.compactMap(Self.modelOption) ?? []
+    }
+
     public func startThread(cwd: String) async throws -> String {
+        try await startThread(
+            settings: .init(workspacePath: cwd)
+        )
+    }
+
+    public func startThread(settings: CodexChatRequestSettings) async throws -> String {
+        var params: [String: JSONValue] = [
+            "cwd": .string(settings.workspacePath),
+            "approvalPolicy": .string("on-request"),
+            "sandbox": .string(settings.permissionMode.sandboxMode),
+            "serviceName": .string("codex_awake"),
+        ]
+        if let modelID = settings.modelID { params["model"] = .string(modelID) }
         let result = try await request(
             method: "thread/start",
-            params: .object([
-                "cwd": .string(cwd),
-                "approvalPolicy": .string("on-request"),
-                "sandbox": .string("workspace-write"),
-                "serviceName": .string("codex_awake"),
-            ])
+            params: .object(params)
         )
         guard let threadId = result["thread"]?["id"]?.stringValue else {
             throw CodexAwakeError.malformedMessage
@@ -121,25 +140,56 @@ public actor AppServerClient {
         return threadId
     }
 
+    public func resumeThread(threadId: String, settings: CodexChatRequestSettings) async throws -> String {
+        var params: [String: JSONValue] = [
+            "threadId": .string(threadId),
+            "cwd": .string(settings.workspacePath),
+            "approvalPolicy": .string("on-request"),
+            "sandbox": .string(settings.permissionMode.sandboxMode),
+        ]
+        if let modelID = settings.modelID { params["model"] = .string(modelID) }
+        let result = try await request(method: "thread/resume", params: .object(params))
+        guard let resumedThreadId = result["thread"]?["id"]?.stringValue else {
+            throw CodexAwakeError.malformedMessage
+        }
+        return resumedThreadId
+    }
+
     public func startTurn(threadId: String, text: String, cwd: String) async throws -> String {
+        try await startTurn(
+            threadId: threadId,
+            messageID: UUID(),
+            text: text,
+            settings: .init(workspacePath: cwd)
+        )
+    }
+
+    public func startTurn(
+        threadId: String,
+        messageID: UUID,
+        text: String,
+        settings: CodexChatRequestSettings
+    ) async throws -> String {
+        var params: [String: JSONValue] = [
+            "threadId": .string(threadId),
+            "clientUserMessageId": .string(messageID.uuidString),
+            "input": .array([
+                .object([
+                    "type": .string("text"),
+                    "text": .string(text),
+                ])
+            ]),
+            "cwd": .string(settings.workspacePath),
+            "approvalPolicy": .string("on-request"),
+            "sandboxPolicy": settings.permissionMode.sandboxPolicy(
+                workspacePath: settings.workspacePath
+            ),
+        ]
+        if let modelID = settings.modelID { params["model"] = .string(modelID) }
+        if let effort = settings.reasoningEffort { params["effort"] = .string(effort) }
         let result = try await request(
             method: "turn/start",
-            params: .object([
-                "threadId": .string(threadId),
-                "input": .array([
-                    .object([
-                        "type": .string("text"),
-                        "text": .string(text),
-                    ])
-                ]),
-                "cwd": .string(cwd),
-                "approvalPolicy": .string("on-request"),
-                "sandboxPolicy": .object([
-                    "type": .string("workspaceWrite"),
-                    "writableRoots": .array([.string(cwd)]),
-                    "networkAccess": .bool(true),
-                ]),
-            ])
+            params: .object(params)
         )
         guard let turnId = result["turn"]?["id"]?.stringValue else {
             throw CodexAwakeError.malformedMessage
@@ -255,6 +305,29 @@ public actor AppServerClient {
             createdAt: date(from: value["createdAt"]),
             updatedAt: date(from: value["updatedAt"]),
             status: .parse(value["status"])
+        )
+    }
+
+    private static func modelOption(from value: JSONValue) -> CodexModelOption? {
+        guard let id = value["id"]?.stringValue,
+            let model = value["model"]?.stringValue,
+            let displayName = value["displayName"]?.stringValue,
+            let defaultEffort = value["defaultReasoningEffort"]?.stringValue
+        else { return nil }
+
+        let efforts =
+            value["supportedReasoningEfforts"]?.arrayValue?.compactMap { option -> CodexReasoningOption? in
+                guard let effort = option["reasoningEffort"]?.stringValue else { return nil }
+                return .init(id: effort, description: option["description"]?.stringValue ?? "")
+            } ?? []
+        return .init(
+            id: id,
+            model: model,
+            displayName: displayName,
+            description: value["description"]?.stringValue ?? "",
+            isDefault: value["isDefault"]?.boolValue ?? false,
+            defaultReasoningEffort: defaultEffort,
+            reasoningOptions: efforts
         )
     }
 

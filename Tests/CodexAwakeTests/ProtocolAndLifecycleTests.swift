@@ -122,7 +122,7 @@ final class ProtocolAndLifecycleTests: XCTestCase {
         )
     }
 
-    func testToolLifecycleDecodingUsesOnlyItemMetadata() {
+    func testToolLifecycleDecodingUsesOnlySafeItemMetadata() {
         let event = AppServerMessageCodec.event(
             method: "item/started",
             params: .object([
@@ -135,10 +135,15 @@ final class ProtocolAndLifecycleTests: XCTestCase {
                 ]),
             ])
         )
-        XCTAssertEqual(
-            event,
-            .itemStarted(threadId: "thread-a", itemId: "tool-a", kind: .commandExecution)
-        )
+        guard case .itemStarted(let threadID, let itemID, let kind, let activity?) = event else {
+            return XCTFail("Expected command activity")
+        }
+        XCTAssertEqual(threadID, "thread-a")
+        XCTAssertEqual(itemID, "tool-a")
+        XCTAssertEqual(kind, .commandExecution)
+        XCTAssertEqual(activity.kind, .command)
+        XCTAssertEqual(activity.title, "Command")
+        XCTAssertNil(activity.detail)
     }
 
     func testUnrelatedNotificationsAreIgnoredWithoutProtocolFailure() {
@@ -176,7 +181,9 @@ final class ProtocolAndLifecycleTests: XCTestCase {
             transportFactory: { _ in transport },
             eventHandler: { event in await collector.append(event) },
             serverRequestHandler: { request in
-                request.method == "item/commandExecution/requestApproval" ? .string("accept") : nil
+                request.method == "item/commandExecution/requestApproval"
+                    ? .object(["decision": .string("accept")])
+                    : nil
             },
             disconnectHandler: { _ in await collector.disconnected() }
         )
@@ -186,8 +193,12 @@ final class ProtocolAndLifecycleTests: XCTestCase {
             {"id":91,"method":"item/commandExecution/requestApproval","params":{"threadId":"thread-a","turnId":"turn-a","itemId":"item-a","command":"swift test"}}
             """)
         try? await Task.sleep(for: .milliseconds(30))
-        XCTAssertTrue(
-            transport.sent.contains(where: { $0.contains("\"id\":91") && $0.contains("\"result\":\"accept\"") }))
+        let response = transport.sent.compactMap { text -> [String: Any]? in
+            guard let data = text.data(using: .utf8) else { return nil }
+            return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        }.first { ($0["id"] as? Int) == 91 }
+        let result = response?["result"] as? [String: Any]
+        XCTAssertEqual(result?["decision"] as? String, "accept")
         await client.disconnect()
     }
 

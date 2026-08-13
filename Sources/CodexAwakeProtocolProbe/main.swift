@@ -33,8 +33,9 @@ struct ProtocolProbe {
         do {
             try await client.connect()
             let result = try await client.reconcileStatuses()
+            let models = try await client.listModels()
             print(
-                "Handshake OK; loaded threads: \(result.loaded.count); metadata records: \(result.summaries.count)"
+                "Handshake OK; loaded threads: \(result.loaded.count); metadata records: \(result.summaries.count); picker models: \(models.count)"
             )
             if arguments.count == 3 {
                 let threadID = try await client.startThread(cwd: arguments[2])

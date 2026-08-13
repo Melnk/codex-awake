@@ -11,7 +11,7 @@ let package = Package(
         .library(name: "CodexAwakeCore", targets: ["CodexAwakeCore"]),
         .executable(name: "CodexAwake", targets: ["CodexAwakeApp"]),
         .executable(name: "CodexAwakeClosedLidHelper", targets: ["CodexAwakeClosedLidHelper"]),
-        .executable(name: "CodexAwakeProtocolProbe", targets: ["CodexAwakeProtocolProbe"])
+        .executable(name: "CodexAwakeProtocolProbe", targets: ["CodexAwakeProtocolProbe"]),
     ],
     targets: [
         .target(
@@ -19,7 +19,7 @@ let package = Package(
             path: "Sources/CodexAwakeCore",
             linkerSettings: [
                 .linkedFramework("IOKit"),
-                .linkedFramework("ServiceManagement")
+                .linkedFramework("ServiceManagement"),
             ]
         ),
         .executableTarget(
@@ -39,9 +39,9 @@ let package = Package(
         ),
         .testTarget(
             name: "CodexAwakeTests",
-            dependencies: ["CodexAwakeCore"],
+            dependencies: ["CodexAwakeApp", "CodexAwakeCore"],
             path: "Tests/CodexAwakeTests"
-        )
+        ),
     ],
     swiftLanguageModes: [.v5]
 )
