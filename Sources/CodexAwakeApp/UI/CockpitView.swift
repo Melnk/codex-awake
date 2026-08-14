@@ -128,16 +128,16 @@ struct CockpitView: View {
                 activeTasks
                 externalChatGPTNotice
                 HStack(spacing: 11) {
-                    Image(systemName: "macwindow.and.cursorarrow")
+                    Image(systemName: "moon.stars")
                         .foregroundStyle(CockpitPalette.ice)
                         .frame(width: 22)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(t("While Codex is open", "Пока Codex открыт"))
+                        Text(t("Sleep when Codex is idle", "Сон без активных задач"))
                             .font(.system(size: 11, weight: .semibold))
                         Text(
                             t(
-                                "Keep this Mac and display awake between tasks",
-                                "Не выключать Mac и экран между задачами")
+                                "Codex may stay open; macOS can turn off the display and put the Mac to sleep",
+                                "Codex может быть открыт — macOS сможет погасить экран и перевести Mac в сон")
                         )
                         .font(.system(size: 9))
                         .foregroundStyle(CockpitPalette.muted)
@@ -146,8 +146,8 @@ struct CockpitView: View {
                     Toggle(
                         "",
                         isOn: Binding(
-                            get: { model.keepAwakeForCodexDesktop },
-                            set: { model.setKeepAwakeForCodexDesktop($0) }
+                            get: { model.allowSleepWhenCodexIdle },
+                            set: { model.setAllowSleepWhenCodexIdle($0) }
                         )
                     )
                     .labelsHidden()

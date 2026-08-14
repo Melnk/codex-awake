@@ -267,6 +267,19 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setAllowSleepWhenCodexIdle(_ enabled: Bool) {
+        setKeepAwakeForCodexDesktop(!enabled)
+        appendEvent(
+            .info,
+            enabled
+                ? "Normal idle sleep will resume when Codex has no active tasks."
+                : "Codex Desktop presence will keep sleep protection active between tasks.",
+            enabled
+                ? "При отсутствии активных задач Codex будет восстановлен обычный режим сна."
+                : "Присутствие Codex Desktop будет сохранять защиту от сна между задачами."
+        )
+    }
+
     func setClosedLidProtectionEnabled(_ enabled: Bool) {
         closedLidProtectionEnabled = enabled
         preferences.setClosedLidProtectionEnabled(enabled)
@@ -444,6 +457,10 @@ final class AppModel: ObservableObject {
 
     var totalActiveSessionCount: Int {
         taskSnapshot.activeCount
+    }
+
+    var allowSleepWhenCodexIdle: Bool {
+        !keepAwakeForCodexDesktop
     }
 
     func copyCodexCommand() {

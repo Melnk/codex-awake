@@ -105,10 +105,10 @@ struct MenuContentView: View {
                 set: { model.setPreventDisplaySleep($0) }
             ))
         Toggle(
-            t("Keep Awake while Codex App is Running", "Не давать Mac уснуть, пока открыт Codex"),
+            t("Allow Sleep with No Active Tasks", "Разрешать сон без активных задач"),
             isOn: Binding(
-                get: { model.keepAwakeForCodexDesktop },
-                set: { model.setKeepAwakeForCodexDesktop($0) }
+                get: { model.allowSleepWhenCodexIdle },
+                set: { model.setAllowSleepWhenCodexIdle($0) }
             ))
         Toggle(
             t("Closed-Lid Protection", "Работа с закрытой крышкой"),

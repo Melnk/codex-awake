@@ -117,6 +117,7 @@ Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a 
 
 - a clear **ON/OFF** protection card that explains what is currently keeping the Mac awake;
 - independent **Keep Mac awake** and **Keep display on** controls;
+- optional **Sleep when Codex is idle** mode that restores the normal macOS display and system-sleep timers between tasks;
 - native **Launch at Login** state, including the macOS approval status;
 - a saved **EN / RU** language switch for the cockpit, menu, dialogs, and diagnostics;
 - Codex Desktop presence, assertion, and combined active-session instruments;
@@ -266,9 +267,10 @@ The command contains no capability token or credential. The endpoint changes onl
 
 ## Auto Keep Awake
 
-**Auto Keep Awake** defaults to on. **Keep Mac awake** and **Keep display on** are independent and also default to on. With automatic protection enabled:
+**Auto Keep Awake** defaults to on. **Keep Mac awake** and **Keep display on** are independent and also default to on. Enable **Sleep when Codex is idle** if Codex Desktop may remain open but the display and Mac should follow the normal macOS idle timers between tasks. With automatic protection enabled:
 
-- if **Keep awake while Codex App is running** is enabled, Codex Desktop presence acquires the assertion even when no managed task is visible;
+- when **Sleep when Codex is idle** is off, Codex Desktop presence acquires the assertion even when no managed task is visible;
+- when **Sleep when Codex is idle** is on, the final task completion releases CodexAwake's assertions after the normal one-second debounce even if Codex Desktop remains open; a new active task acquires them again;
 - `PreventUserIdleSystemSleep` keeps background work running while allowing the display to turn off normally;
 - `PreventUserIdleDisplaySleep` keeps the display on; the two assertions are reconciled immediately when either mode changes;
 - an active Codex Desktop lifecycle acquires the assertion even when full-time presence protection is disabled;

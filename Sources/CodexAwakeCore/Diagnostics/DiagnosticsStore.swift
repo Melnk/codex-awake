@@ -50,7 +50,7 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
             Codex desktop app: \(codexDesktopRunning ? "running" : "not running")
             Active Codex desktop sessions: \(codexDesktopActiveSessionIDs.count)
             Active desktop session IDs: \(desktopSessions.isEmpty ? "none" : desktopSessions)
-            Keep awake for Codex desktop: \(keepAwakeForCodexDesktop ? "enabled" : "disabled")
+            Allow normal sleep while Codex is idle: \(!keepAwakeForCodexDesktop ? "enabled" : "disabled")
             Automatic protection: \(autoKeepAwake ? "enabled" : "disabled")
             Prevent system sleep: \(preventSystemSleep ? "enabled" : "disabled")
             Prevent display sleep: \(preventDisplaySleep ? "enabled" : "disabled")

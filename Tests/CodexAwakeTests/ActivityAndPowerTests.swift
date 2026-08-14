@@ -278,6 +278,32 @@ final class ActivityAndPowerTests: XCTestCase {
         XCTAssertTrue(held)
     }
 
+    func testСонРазрешаетсяМеждуЗадачамиИЗащитаВозвращаетсяДляНовойЗадачи() async {
+        // Arrange
+        let power = MockPowerAssertionController()
+        let sleeper = ManualSleeper()
+        let coordinator = AwakeCoordinator(
+            power: power,
+            sleeper: sleeper,
+            keepAwakeForCodexDesktop: false
+        )
+        await coordinator.setCodexDesktopRunning(true)
+        await coordinator.setCodexDesktopActiveCount(1)
+
+        // Act: the last task completes while Codex Desktop remains open.
+        await coordinator.setCodexDesktopActiveCount(0)
+        await settle()
+        await sleeper.fireAll()
+        await settle()
+        let heldWhileIdle = await power.assertionIsHeld()
+        await coordinator.setCodexDesktopActiveCount(1)
+        let heldForNextTask = await power.assertionIsHeld()
+
+        // Assert
+        XCTAssertFalse(heldWhileIdle)
+        XCTAssertTrue(heldForNextTask)
+    }
+
     func testAutoKeepAwakeOffOverridesCodexDesktopPresence() async {
         let power = MockPowerAssertionController()
         let coordinator = AwakeCoordinator(power: power)
