@@ -36,13 +36,13 @@ You need:
    open dist/CodexAwake.app
    ```
 
-3. The dashboard opens automatically. While CodexAwake is running, its icon stays in the Dock and macOS shows the normal running-app indicator below it. If you close the dashboard, click the Dock icon or the **bolt icon** in the macOS menu bar and select **Open Cockpit…**.
+3. The dashboard opens automatically. On the first 1.9 launch, a three-step guide explains privacy, the three power modes, and the recommended defaults. While CodexAwake is running, its icon stays in the Dock and macOS shows the normal running-app indicator below it. If you close the dashboard, click the Dock icon or the **bolt icon** in the macOS menu bar and select **Open Cockpit…**.
 
 4. Choose a project folder in **Chat with Codex**. The main protection switch is enabled by default and starts protecting the Mac when Codex is open or a tracked task is active.
 
    Under **Protection modes**, choose whether CodexAwake should keep the Mac running, keep the display on, or both. **Launch at Login** is available in the same section.
 
-   Use the **EN / RU** switch in the top-right corner to change the application language. The choice is saved for the next launch.
+   Use the **EN / RU** switch in the top-right corner to change the application language. Choose **System**, **Light**, or **Dark** appearance next to it. Both choices are saved for the next launch.
 
 5. Optional: to keep the Mac running with the lid closed, click **One-time helper setup…**, approve the administrator prompt, and enable **Closed-lid mode**. Close the lid only after the status says **Active — you can close the lid**.
 
@@ -85,13 +85,13 @@ If macOS blocks the first launch, right-click **CodexAwake.app**, choose **Open*
    open dist/CodexAwake.app
    ```
 
-3. Главное окно откроется автоматически. Пока CodexAwake запущен, его иконка остаётся в Dock, а macOS показывает под ней стандартную точку работающего приложения. Если вы закрыли окно, нажмите на иконку в Dock или на **иконку молнии** в строке меню macOS и выберите **Open Cockpit…**.
+3. Главное окно откроется автоматически. При первом запуске версии 1.9 появится короткий гид из трёх шагов: приватность, три режима питания и рекомендуемые настройки. Пока CodexAwake запущен, его иконка остаётся в Dock, а macOS показывает под ней стандартную точку работающего приложения. Если вы закрыли окно, нажмите на иконку в Dock или на **иконку молнии** в строке меню macOS и выберите **Open Cockpit…**.
 
 4. В блоке **Chat with Codex** выберите папку проекта. Основная защита включена по умолчанию и не даёт Mac уснуть, когда открыт Codex или выполняется отслеживаемая задача.
 
    В разделе **Режимы защиты** отдельно выберите, нужно ли оставлять включённым Mac, экран или оба режима. Там же находится **Запускать при входе**.
 
-   Переключатель **EN / RU** в правом верхнем углу меняет язык приложения. Выбранный язык сохраняется для следующих запусков.
+   Переключатель **EN / RU** в правом верхнем углу меняет язык приложения. Рядом выбирается **Системная**, **Светлая** или **Тёмная** тема. Оба выбора сохраняются для следующих запусков.
 
 5. Необязательно: чтобы Mac продолжал работать с закрытой крышкой, нажмите **Однократная настройка helper…**, подтвердите запрос администратора и включите **Режим закрытой крышки**. Закрывайте крышку только после появления статуса **Active — you can close the lid**.
 
@@ -113,11 +113,15 @@ open /Applications/CodexAwake.app
 
 ## Cockpit
 
-Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a clean violet visual language with a saved **Light / Dark** appearance switch. It includes:
+Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a cohesive violet visual language with saved **System / Light / Dark** appearance and **EN / RU** localization. It includes:
 
+- a versioned first-launch onboarding guide with a plain-language explanation of all three power modes;
 - a clear **ON/OFF** protection card that explains what is currently keeping the Mac awake;
 - independent **Keep Mac awake** and **Keep display on** controls;
+- fully clickable, keyboard-focusable power cards with VoiceOver labels and visible state;
 - optional **Sleep when Codex is idle** mode that restores the normal macOS display and system-sleep timers between tasks;
+- an adaptive small-window layout with **Overview / Chat** navigation and `Command-1` / `Command-2` shortcuts;
+- a saved compact Menu Bar mode with essential status and actions first;
 - native **Launch at Login** state, including the macOS approval status;
 - a saved **EN / RU** language switch for the cockpit, menu, dialogs, and diagnostics;
 - Codex Desktop presence, assertion, and combined active-session instruments;
@@ -137,6 +141,12 @@ Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a 
 - approval cards for shell commands, network access, file changes, and additional permissions.
 
 The cockpit uses the authenticated [Codex App Server](https://learn.chatgpt.com/docs/app-server), not a separately stored API key. Select a project folder before starting a task. Codex is given workspace-write access to that folder and uses the installed runtime's `on-request` approval policy; approval prompts remain visible while the task is active.
+
+### Version 1.9 / Версия 1.9
+
+**English.** Version 1.9 introduces a first-launch guide, clearly explains system-sleep, display, and closed-lid protection, and makes every custom switch card clickable across its full area. The Cockpit adapts below 900 points into keyboard-accessible Overview and Chat sections. Appearance now supports System, Light, and Dark modes; the Menu Bar can use a saved compact layout. VoiceOver labels, keyboard actions, increased-contrast outlines, Reduce Motion support, and restrained transitions improve accessibility without losing the premium visual style. The guide can be reopened from **Show Welcome Guide…**.
+
+**Русский.** В версии 1.9 появился вводный гид, который понятно объясняет защиту системного сна, экрана и режим закрытой крышки. Все карточки-переключатели нажимаются по всей площади. При ширине меньше 900 точек Cockpit переходит к доступным с клавиатуры разделам **«Обзор»** и **«Чат»**. Оформление поддерживает системную, светлую и тёмную темы, а Menu Bar — сохраняемый компактный режим. Добавлены подписи VoiceOver, клавиатурные действия, усиленные контуры при повышенной контрастности, поддержка «Уменьшения движения» и спокойные переходы. Повторно открыть гид можно через **«Показать вводный гид…»**.
 
 ### Version 1.8 / Версия 1.8
 

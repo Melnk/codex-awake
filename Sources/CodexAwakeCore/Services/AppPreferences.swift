@@ -7,8 +7,10 @@ public protocol AppPreferencesStoring: Sendable {
     var keepAwakeForCodexDesktop: Bool { get }
     var closedLidProtectionEnabled: Bool { get }
     var firstRunAcknowledged: Bool { get }
+    var completedOnboardingVersion: Int { get }
     var interfaceTheme: String? { get }
     var appLanguage: String? { get }
+    var compactMenuBarEnabled: Bool { get }
     var workspacePath: String? { get }
 
     func setAutoKeepAwake(_ enabled: Bool)
@@ -17,8 +19,10 @@ public protocol AppPreferencesStoring: Sendable {
     func setKeepAwakeForCodexDesktop(_ enabled: Bool)
     func setClosedLidProtectionEnabled(_ enabled: Bool)
     func setFirstRunAcknowledged(_ acknowledged: Bool)
+    func setCompletedOnboardingVersion(_ version: Int)
     func setInterfaceTheme(_ theme: String)
     func setAppLanguage(_ language: String)
+    func setCompactMenuBarEnabled(_ enabled: Bool)
     func setWorkspacePath(_ path: String?)
 }
 
@@ -30,8 +34,10 @@ public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked
         static let keepAwakeForCodexDesktop = "KeepAwakeForCodexDesktop"
         static let closedLidProtectionEnabled = "ClosedLidProtectionEnabled"
         static let firstRunAcknowledged = "FirstRunAcknowledged"
+        static let completedOnboardingVersion = "CompletedOnboardingVersion"
         static let interfaceTheme = "InterfaceTheme"
         static let appLanguage = "AppLanguage"
+        static let compactMenuBarEnabled = "CompactMenuBarEnabled"
         static let workspacePath = "CodexWorkspacePath"
     }
 
@@ -65,12 +71,20 @@ public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked
         defaults.bool(forKey: Key.firstRunAcknowledged)
     }
 
+    public var completedOnboardingVersion: Int {
+        defaults.integer(forKey: Key.completedOnboardingVersion)
+    }
+
     public var interfaceTheme: String? {
         defaults.string(forKey: Key.interfaceTheme)
     }
 
     public var appLanguage: String? {
         defaults.string(forKey: Key.appLanguage)
+    }
+
+    public var compactMenuBarEnabled: Bool {
+        defaults.object(forKey: Key.compactMenuBarEnabled) as? Bool ?? true
     }
 
     public var workspacePath: String? {
@@ -101,12 +115,20 @@ public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked
         defaults.set(acknowledged, forKey: Key.firstRunAcknowledged)
     }
 
+    public func setCompletedOnboardingVersion(_ version: Int) {
+        defaults.set(max(0, version), forKey: Key.completedOnboardingVersion)
+    }
+
     public func setInterfaceTheme(_ theme: String) {
         defaults.set(theme, forKey: Key.interfaceTheme)
     }
 
     public func setAppLanguage(_ language: String) {
         defaults.set(language, forKey: Key.appLanguage)
+    }
+
+    public func setCompactMenuBarEnabled(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Key.compactMenuBarEnabled)
     }
 
     public func setWorkspacePath(_ path: String?) {

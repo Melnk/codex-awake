@@ -6,6 +6,58 @@ struct MenuContentView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        Group {
+            if model.compactMenuBarEnabled {
+                compactMenu
+            } else {
+                detailedMenu
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var compactMenu: some View {
+        Text("CodexAwake")
+            .font(.headline)
+        Text(compactStatus)
+        Text("\(t("Active tasks", "Активные задачи")): \(model.totalActiveSessionCount)")
+
+        if !model.firstRunAcknowledged {
+            Divider()
+            Button(t("Finish First-Run Setup…", "Завершить первоначальную настройку…")) {
+                openWindow(id: "cockpit")
+            }
+        }
+
+        if !model.taskSnapshot.active.isEmpty {
+            Divider()
+            ForEach(model.taskSnapshot.active.prefix(3)) { task in
+                Button("• \(task.projectName) · \(taskStatus(task.status))") {
+                    model.openTask(task)
+                }
+            }
+        }
+
+        Divider()
+        Button(t("Open Cockpit…", "Открыть главное окно…")) { openWindow(id: "cockpit") }
+            .keyboardShortcut("k")
+        Toggle(
+            t("Sleep Protection", "Защита от сна"),
+            isOn: Binding(
+                get: { model.autoKeepAwake },
+                set: { model.setAutoKeepAwake($0) }
+            ))
+        Button(t("Show All Controls", "Показать все настройки")) {
+            model.setCompactMenuBarEnabled(false)
+        }
+
+        Divider()
+        Button(t("Quit CodexAwake", "Выйти из CodexAwake")) { model.requestQuit() }
+            .keyboardShortcut("q")
+    }
+
+    @ViewBuilder
+    private var detailedMenu: some View {
         Text("CodexAwake")
             .font(.headline)
         Text("\(t("App Server", "Сервер приложения")): \(appServerStatus)")
@@ -22,22 +74,9 @@ struct MenuContentView: View {
 
         if !model.firstRunAcknowledged {
             Divider()
-            Text(
-                t(
-                    "Tracks cockpit tasks and Codex CLI/TUI sessions connected to this app's managed App Server.",
-                    "Отслеживает задачи cockpit и сессии Codex CLI/TUI, подключённые к серверу приложения."))
-            Text(
-                t(
-                    "Tracks Codex Desktop task lifecycle without reading prompt or response text.",
-                    "Отслеживает жизненный цикл задач Codex Desktop, не читая запросы и ответы."))
-            Text(
-                t(
-                    "Optional Closed-Lid mode uses a short privileged lease and requires one-time administrator approval.",
-                    "Режим закрытой крышки использует короткую привилегированную аренду и требует однократного подтверждения администратора."
-                ))
-            Button(t("I Understand", "Понятно")) { model.acknowledgeFirstRun() }
-                .accessibilityLabel(
-                    t("Acknowledge CodexAwake tracking scope", "Подтвердить понимание области отслеживания CodexAwake"))
+            Button(t("Finish First-Run Setup…", "Завершить первоначальную настройку…")) {
+                openWindow(id: "cockpit")
+            }
         }
 
         if model.totalActiveSessionCount > 0 {
@@ -170,9 +209,20 @@ struct MenuContentView: View {
             }
         }
 
+        Toggle(
+            t("Compact Menu Bar", "Компактное меню"),
+            isOn: Binding(
+                get: { model.compactMenuBarEnabled },
+                set: { model.setCompactMenuBarEnabled($0) }
+            ))
+
         Divider()
         Button(t("Diagnostics…", "Диагностика…")) { openWindow(id: "diagnostics") }
             .keyboardShortcut(",")
+        Button(t("Show Welcome Guide…", "Показать вводный гид…")) {
+            model.showOnboarding()
+            openWindow(id: "cockpit")
+        }
         if model.appServerState == .stopped || model.appServerState == .failed {
             Button(t("Start App Server", "Запустить сервер приложения")) { Task { await model.startManagedServer() } }
         } else {
@@ -194,6 +244,19 @@ struct MenuContentView: View {
         case .completed: t("done", "готово")
         case .error: t("error", "ошибка")
         }
+    }
+
+    private var compactStatus: String {
+        if model.activity.certainty == .unknownReconnecting {
+            return t("Reconnecting to Codex…", "Переподключение к Codex…")
+        }
+        if model.assertionHeld {
+            return t("Protection active", "Защита активна")
+        }
+        if model.appServerState == .running {
+            return t("Ready for the next task", "Готово к следующей задаче")
+        }
+        return t("Codex App Server is \(appServerStatus)", "Сервер Codex: \(appServerStatus)")
     }
 
     private func t(_ english: String, _ russian: String) -> String {

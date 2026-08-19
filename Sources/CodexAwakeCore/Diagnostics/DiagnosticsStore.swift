@@ -13,6 +13,7 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
     public var autoKeepAwake = true
     public var preventSystemSleep = true
     public var preventDisplaySleep = true
+    public var compactMenuBarEnabled = true
     public var powerAssertions = PowerAssertionSnapshot()
     public var launchAtLogin = false
     public var closedLidProtection = ClosedLidProtectionSnapshot()
@@ -54,6 +55,7 @@ public struct DiagnosticsSnapshot: Equatable, Sendable {
             Automatic protection: \(autoKeepAwake ? "enabled" : "disabled")
             Prevent system sleep: \(preventSystemSleep ? "enabled" : "disabled")
             Prevent display sleep: \(preventDisplaySleep ? "enabled" : "disabled")
+            Compact menu bar: \(compactMenuBarEnabled ? "enabled" : "disabled")
             System-sleep assertion: \(powerAssertions.systemSleepPrevented ? "held" : "released")
             Display-sleep assertion: \(powerAssertions.displaySleepPrevented ? "held" : "released")
             Launch at login: \(launchAtLogin ? "enabled" : "disabled")

@@ -17,38 +17,73 @@ enum CockpitPalette {
     static let danger = Color(red: 0.95, green: 0.30, blue: 0.31)
 }
 
+private enum CompactCockpitSection {
+    case overview
+    case chat
+}
+
 struct CockpitView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var compactSection = CompactCockpitSection.overview
+
     var body: some View {
-        ZStack {
-            CockpitBackground()
+        GeometryReader { geometry in
+            let usesCompactLayout = geometry.size.width < 900
 
-            VStack(spacing: 0) {
-                topBar
+            ZStack {
+                CockpitBackground()
 
-                HSplitView {
-                    controlDeck
-                        .padding(.trailing, 10)
-                        .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
-                    chatDeck
-                        .padding(.leading, 10)
-                        .frame(minWidth: 460)
+                VStack(spacing: 0) {
+                    topBar
+
+                    if usesCompactLayout {
+                        compactNavigation
+                        compactContent
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(reduceMotion ? .identity : .opacity)
+                    } else {
+                        HSplitView {
+                            controlDeck
+                                .padding(.trailing, 10)
+                                .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
+                            chatDeck
+                                .padding(.leading, 10)
+                                .frame(minWidth: 460)
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 24)
+                    }
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
-            }
 
-            if let approval = model.approvalRequests.first {
-                ApprovalOverlay(request: approval)
-                    .environmentObject(model)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                if model.firstRunAcknowledged, let approval = model.approvalRequests.first {
+                    ApprovalOverlay(request: approval)
+                        .environmentObject(model)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
+
+                if !model.firstRunAcknowledged {
+                    OnboardingView()
+                        .environmentObject(model)
+                        .transition(reduceMotion ? .identity : .opacity)
+                        .zIndex(2)
+                }
             }
         }
-        .frame(minWidth: 860, minHeight: 620)
+        .frame(minWidth: 660, minHeight: 540)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.20), value: compactSection)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: model.firstRunAcknowledged)
     }
 
     private var topBar: some View {
+        ViewThatFits(in: .horizontal) {
+            fullTopBar
+            compactTopBar
+        }
+    }
+
+    private var fullTopBar: some View {
         HStack(spacing: 14) {
             Image(nsImage: NSApplication.shared.applicationIconImage)
                 .resizable()
@@ -104,11 +139,143 @@ struct CockpitView: View {
         }
     }
 
+    private var compactTopBar: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 36, height: 36)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("CodexAwake")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                Text(
+                    model.totalActiveSessionCount == 0
+                        ? t("Ready", "Готово")
+                        : t("Active: \(model.totalActiveSessionCount)", "Активных: \(model.totalActiveSessionCount)")
+                )
+                .font(.caption)
+                .foregroundStyle(CockpitPalette.muted)
+            }
+
+            Spacer()
+            StatusPill(
+                text: model.appServerState == .running ? t("READY", "ГОТОВ") : t("CONNECTING", "ПОДКЛЮЧЕНИЕ"),
+                color: serverAccent
+            )
+            compactPreferencesMenu
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background(CockpitPalette.panelRaised.opacity(0.76))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(CockpitPalette.separator.opacity(0.65)).frame(height: 1)
+        }
+    }
+
+    private var compactPreferencesMenu: some View {
+        Menu {
+            Picker(
+                t("Appearance", "Оформление"),
+                selection: Binding(
+                    get: { model.interfaceTheme },
+                    set: { model.setInterfaceTheme($0) }
+                )
+            ) {
+                ForEach(InterfaceTheme.allCases) { theme in
+                    Label(theme.title(in: model.appLanguage), systemImage: theme.symbol).tag(theme)
+                }
+            }
+            Picker(
+                t("Language", "Язык"),
+                selection: Binding(
+                    get: { model.appLanguage },
+                    set: { model.setAppLanguage($0) }
+                )
+            ) {
+                ForEach(AppLanguage.allCases) { language in
+                    Text(language.title).tag(language)
+                }
+            }
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(t("Appearance and language", "Оформление и язык"))
+        .accessibilityLabel(t("Appearance and language", "Оформление и язык"))
+    }
+
+    private var compactNavigation: some View {
+        HStack(spacing: 8) {
+            compactNavigationButton(
+                .overview,
+                title: t("Overview", "Обзор"),
+                icon: "gauge.with.dots.needle.67percent"
+            )
+            compactNavigationButton(
+                .chat,
+                title: t("Chat", "Чат"),
+                icon: "bubble.left.and.bubble.right"
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private func compactNavigationButton(
+        _ section: CompactCockpitSection,
+        title: String,
+        icon: String
+    ) -> some View {
+        Button {
+            compactSection = section
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(compactSection == section ? Color.white : CockpitPalette.silver)
+        .background(
+            compactSection == section ? CockpitPalette.ice : CockpitPalette.panelRaised.opacity(0.72),
+            in: RoundedRectangle(cornerRadius: 11)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 11)
+                .stroke(compactSection == section ? CockpitPalette.iceDeep : CockpitPalette.separator)
+        )
+        .keyboardShortcut(section == .overview ? "1" : "2", modifiers: [.command])
+        .accessibilityValue(
+            compactSection == section ? t("Selected", "Выбрано") : t("Not selected", "Не выбрано"))
+    }
+
+    @ViewBuilder
+    private var compactContent: some View {
+        switch compactSection {
+        case .overview:
+            controlDeck
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+        case .chat:
+            chatDeck
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+        }
+    }
+
     private var controlDeck: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 powerControl
                 powerModesControl
+                closedLidControl
 
                 HStack(spacing: 10) {
                     InstrumentCard(
@@ -127,38 +294,22 @@ struct CockpitView: View {
 
                 activeTasks
                 externalChatGPTNotice
-                HStack(spacing: 11) {
-                    Image(systemName: "moon.stars")
-                        .foregroundStyle(CockpitPalette.ice)
-                        .frame(width: 22)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(t("Sleep when Codex is idle", "Сон без активных задач"))
-                            .font(.system(size: 11, weight: .semibold))
-                        Text(
-                            t(
-                                "Codex may stay open; macOS can turn off the display and put the Mac to sleep",
-                                "Codex может быть открыт — macOS сможет погасить экран и перевести Mac в сон")
-                        )
-                        .font(.system(size: 9))
-                        .foregroundStyle(CockpitPalette.muted)
-                    }
-                    Spacer()
-                    Toggle(
-                        "",
-                        isOn: Binding(
-                            get: { model.allowSleepWhenCodexIdle },
-                            set: { model.setAllowSleepWhenCodexIdle($0) }
-                        )
+                PremiumToggleCard(
+                    title: t("Sleep when Codex is idle", "Сон без активных задач"),
+                    subtitle: t(
+                        "Codex may stay open; normal macOS sleep timers resume",
+                        "Codex может быть открыт — обычные таймеры сна macOS снова работают"
+                    ),
+                    icon: "moon.stars",
+                    accent: CockpitPalette.violetSoft,
+                    language: model.appLanguage,
+                    isOn: Binding(
+                        get: { model.allowSleepWhenCodexIdle },
+                        set: { model.setAllowSleepWhenCodexIdle($0) }
                     )
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                }
-                .padding(13)
-                .background(CockpitPalette.panelRaised.opacity(0.72), in: RoundedRectangle(cornerRadius: 15))
-                .overlay(RoundedRectangle(cornerRadius: 15).stroke(CockpitPalette.separator.opacity(0.58)))
+                )
 
-                closedLidControl
+                launchAtLoginControl
 
                 HStack(spacing: 10) {
                     Button(t("Diagnostics", "Диагностика")) { openWindow(id: "diagnostics") }
@@ -189,23 +340,23 @@ struct CockpitView: View {
                 .opacity(model.autoKeepAwake ? 0.82 : 0.25)
 
             VStack(alignment: .leading, spacing: 13) {
-                HStack {
-                    Label(t("Sleep protection", "Защита от сна"), systemImage: "sparkles")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.88))
-                    Spacer()
-                    Toggle(
-                        "",
-                        isOn: Binding(
-                            get: { model.autoKeepAwake },
-                            set: { model.setAutoKeepAwake($0) }
-                        )
-                    )
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .tint(.white.opacity(0.88))
+                Button {
+                    model.setAutoKeepAwake(!model.autoKeepAwake)
+                } label: {
+                    HStack {
+                        Label(t("Sleep protection", "Защита от сна"), systemImage: "sparkles")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.92))
+                        Spacer()
+                        PremiumSwitchIndicator(isOn: model.autoKeepAwake)
+                            .accessibilityHidden(true)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(t("Automatic sleep protection", "Автоматическая защита от сна"))
+                .accessibilityValue(
+                    model.autoKeepAwake ? t("On", "Включено") : t("Off", "Выключено"))
 
                 Text(powerHeadline)
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
@@ -296,7 +447,7 @@ struct CockpitView: View {
 
     private var powerModesControl: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(t("PROTECTION MODES", "РЕЖИМЫ ЗАЩИТЫ"))
+            Text(t("THREE POWER MODES", "ТРИ РЕЖИМА ПИТАНИЯ"))
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .tracking(1.4)
                 .foregroundStyle(CockpitPalette.muted)
@@ -306,6 +457,7 @@ struct CockpitView: View {
                 subtitle: t("Background work keeps running", "Фоновые задачи продолжат работать"),
                 icon: "moon.zzz",
                 accent: model.powerAssertions.systemSleepPrevented ? CockpitPalette.ice : CockpitPalette.muted,
+                language: model.appLanguage,
                 isOn: Binding(
                     get: { model.preventSystemSleep },
                     set: { model.setPreventSystemSleep($0) }
@@ -317,23 +469,28 @@ struct CockpitView: View {
                 subtitle: t("Prevents display dimming and sleep", "Экран не погаснет и не перейдёт в сон"),
                 icon: "display",
                 accent: model.powerAssertions.displaySleepPrevented ? CockpitPalette.ice : CockpitPalette.muted,
+                language: model.appLanguage,
                 isOn: Binding(
                     get: { model.preventDisplaySleep },
                     set: { model.setPreventDisplaySleep($0) }
                 )
             )
 
-            PowerModeToggle(
-                title: t("Launch at login", "Запускать при входе"),
-                subtitle: launchAtLoginSubtitle,
-                icon: "person.crop.circle.badge.checkmark",
-                accent: model.launchAtLogin ? CockpitPalette.ice : CockpitPalette.muted,
-                isOn: Binding(
-                    get: { model.launchAtLogin },
-                    set: { model.setLaunchAtLogin($0) }
-                )
-            )
         }
+    }
+
+    private var launchAtLoginControl: some View {
+        PremiumToggleCard(
+            title: t("Launch at login", "Запускать при входе"),
+            subtitle: launchAtLoginSubtitle,
+            icon: "person.crop.circle.badge.checkmark",
+            accent: model.launchAtLogin ? CockpitPalette.ice : CockpitPalette.muted,
+            language: model.appLanguage,
+            isOn: Binding(
+                get: { model.launchAtLogin },
+                set: { model.setLaunchAtLogin($0) }
+            )
+        )
     }
 
     private var externalChatGPTNotice: some View {
@@ -358,30 +515,34 @@ struct CockpitView: View {
 
     private var closedLidControl: some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 9) {
-                Image(systemName: model.closedLidProtection.leaseActive ? "lock.open.display" : "lock.display")
-                    .foregroundStyle(closedLidAccent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(t("Closed-lid mode", "Режим закрытой крышки"))
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .textCase(.uppercase)
-                        .tracking(0.9)
-                    Text(closedLidStatusText)
-                        .font(.system(size: 10))
-                        .foregroundStyle(CockpitPalette.muted)
+            Button {
+                model.setClosedLidProtectionEnabled(!model.closedLidProtectionEnabled)
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: model.closedLidProtection.leaseActive ? "lock.open.display" : "lock.display")
+                        .foregroundStyle(closedLidAccent)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(t("Closed-lid mode", "Режим закрытой крышки"))
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .textCase(.uppercase)
+                            .tracking(0.9)
+                        Text(closedLidStatusText)
+                            .font(.system(size: 10))
+                            .foregroundStyle(CockpitPalette.muted)
+                    }
+                    Spacer()
+                    PremiumSwitchIndicator(isOn: model.closedLidProtectionEnabled)
+                        .accessibilityHidden(true)
                 }
-                Spacer()
-                Toggle(
-                    "",
-                    isOn: Binding(
-                        get: { model.closedLidProtectionEnabled },
-                        set: { model.setClosedLidProtectionEnabled($0) }
-                    )
-                )
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(t("Closed-lid mode", "Режим закрытой крышки"))
+            .accessibilityValue(
+                model.closedLidProtectionEnabled ? t("On", "Включено") : t("Off", "Выключено")
+            )
+            .accessibilityHint(closedLidStatusText)
 
             if !model.closedLidProtection.helperInstalled {
                 Button(t("One-time helper setup…", "Однократная настройка helper…")) {
@@ -710,6 +871,7 @@ private struct ApprovalOverlay: View {
                 HStack(spacing: 10) {
                     Button(t("Decline", "Отклонить")) { model.resolveApproval(request, decision: .decline) }
                         .buttonStyle(CockpitSecondaryButtonStyle())
+                        .keyboardShortcut(.cancelAction)
                     Spacer()
                     Button(t("Allow for Session", "Разрешить для сессии")) {
                         model.resolveApproval(request, decision: .acceptForSession)
@@ -717,12 +879,15 @@ private struct ApprovalOverlay: View {
                     .buttonStyle(CockpitSecondaryButtonStyle())
                     Button(t("Allow Once", "Разрешить один раз")) { model.resolveApproval(request, decision: .accept) }
                         .buttonStyle(CockpitPrimaryButtonStyle())
+                        .keyboardShortcut(.defaultAction)
                 }
             }
             .padding(24)
             .frame(width: 540)
             .background(CockpitPanel(cornerRadius: 22))
             .shadow(color: .black.opacity(0.28), radius: 38, y: 18)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(t("Codex operation requires approval", "Операция Codex требует подтверждения"))
         }
     }
 
@@ -788,47 +953,34 @@ private struct PowerModeToggle: View {
     let subtitle: String
     let icon: String
     let accent: Color
+    let language: AppLanguage
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) {
-            HStack(spacing: 11) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(accent)
-                    .frame(width: 24, height: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(CockpitPalette.silver)
-                    Text(subtitle)
-                        .font(.system(size: 9))
-                        .foregroundStyle(CockpitPalette.muted)
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 8)
-            }
-            .contentShape(Rectangle())
-        }
-        .toggleStyle(.switch)
-        .controlSize(.small)
-        .padding(12)
-        .background(CockpitPalette.panelRaised.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(CockpitPalette.separator.opacity(0.55)))
-        .accessibilityHint(subtitle)
+        PremiumToggleCard(
+            title: title,
+            subtitle: subtitle,
+            icon: icon,
+            accent: accent,
+            language: language,
+            isOn: $isOn
+        )
     }
 }
 
-private struct ThemeSwitcher: View {
+struct ThemeSwitcher: View {
     let language: AppLanguage
     @Binding var selection: InterfaceTheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(InterfaceTheme.allCases) { theme in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
+                    if reduceMotion {
                         selection = theme
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.18)) { selection = theme }
                     }
                 } label: {
                     Image(systemName: theme.symbol)
@@ -859,15 +1011,18 @@ private struct ThemeSwitcher: View {
     }
 }
 
-private struct LanguageSwitcher: View {
+struct LanguageSwitcher: View {
     @Binding var selection: AppLanguage
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(AppLanguage.allCases) { language in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
+                    if reduceMotion {
                         selection = language
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.18)) { selection = language }
                     }
                 } label: {
                     Text(language.code)
@@ -919,7 +1074,7 @@ private struct AmbientBlob: View {
     }
 }
 
-private struct CockpitBackground: View {
+struct CockpitBackground: View {
     var body: some View {
         ZStack {
             CockpitPalette.canvas

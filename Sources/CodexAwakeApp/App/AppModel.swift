@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
     @Published var workspacePath: String?
     @Published var interfaceTheme: InterfaceTheme
     @Published var appLanguage: AppLanguage
+    @Published var compactMenuBarEnabled: Bool
     @Published var taskSnapshot = CodexTaskSnapshot()
 
     let diagnostics = DiagnosticsStore()
@@ -39,7 +40,7 @@ final class AppModel: ObservableObject {
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "App")
     private let tracker = ThreadActivityTracker()
     private let taskRegistry = CodexTaskRegistry()
-    private let taskNotifications = TaskNotificationService()
+    private lazy var taskNotifications = TaskNotificationService()
     private let preferences: any AppPreferencesStoring
     private let desktopMonitor = CodexDesktopMonitor()
     private let power: PowerProtectionManager
@@ -72,19 +73,20 @@ final class AppModel: ObservableObject {
         interfaceTheme =
             InterfaceTheme(
                 rawValue: preferences.interfaceTheme ?? ""
-            ) ?? .light
+            ) ?? .system
         let selectedLanguage =
             AppLanguage(
                 rawValue: preferences.appLanguage ?? ""
             ) ?? .systemDefault
         appLanguage = selectedLanguage
+        compactMenuBarEnabled = preferences.compactMenuBarEnabled
         chat = CodexChatSession(language: selectedLanguage)
         autoKeepAwake = auto
         self.preventSystemSleep = preventSystemSleep
         self.preventDisplaySleep = preventDisplaySleep
         keepAwakeForCodexDesktop = keepForDesktop
         closedLidProtectionEnabled = closedLid
-        firstRunAcknowledged = preferences.firstRunAcknowledged
+        firstRunAcknowledged = preferences.completedOnboardingVersion >= AppBuildInfo.onboardingVersion
         if let savedWorkspace = preferences.workspacePath,
             FileManager.default.fileExists(atPath: savedWorkspace)
         {
@@ -256,6 +258,11 @@ final class AppModel: ObservableObject {
         } else {
             closedLidActionMessage = nil
         }
+    }
+
+    func setCompactMenuBarEnabled(_ enabled: Bool) {
+        compactMenuBarEnabled = enabled
+        preferences.setCompactMenuBarEnabled(enabled)
     }
 
     func setKeepAwakeForCodexDesktop(_ enabled: Bool) {
@@ -448,6 +455,11 @@ final class AppModel: ObservableObject {
     func acknowledgeFirstRun() {
         firstRunAcknowledged = true
         preferences.setFirstRunAcknowledged(true)
+        preferences.setCompletedOnboardingVersion(AppBuildInfo.onboardingVersion)
+    }
+
+    func showOnboarding() {
+        firstRunAcknowledged = false
     }
 
     var codexCommand: String? {
@@ -865,6 +877,7 @@ final class AppModel: ObservableObject {
         value.autoKeepAwake = autoKeepAwake
         value.preventSystemSleep = preventSystemSleep
         value.preventDisplaySleep = preventDisplaySleep
+        value.compactMenuBarEnabled = compactMenuBarEnabled
         value.powerAssertions = powerAssertions
         value.launchAtLogin = launchAtLogin
         value.closedLidProtection = closedLidProtection

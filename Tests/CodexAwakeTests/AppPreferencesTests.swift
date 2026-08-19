@@ -35,6 +35,8 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preventSystemSleep)
         XCTAssertTrue(preventDisplaySleep)
         XCTAssertTrue(keepAwakeForDesktop)
+        XCTAssertTrue(preferences.compactMenuBarEnabled)
+        XCTAssertEqual(preferences.completedOnboardingVersion, 0)
         XCTAssertFalse(preferences.closedLidProtectionEnabled)
     }
 
@@ -49,8 +51,10 @@ final class AppPreferencesTests: XCTestCase {
         preferences.setKeepAwakeForCodexDesktop(false)
         preferences.setClosedLidProtectionEnabled(true)
         preferences.setFirstRunAcknowledged(true)
+        preferences.setCompletedOnboardingVersion(1)
         preferences.setInterfaceTheme("dark")
         preferences.setAppLanguage("russian")
+        preferences.setCompactMenuBarEnabled(false)
         preferences.setWorkspacePath("/tmp/project")
 
         // Assert
@@ -60,8 +64,10 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.keepAwakeForCodexDesktop)
         XCTAssertTrue(preferences.closedLidProtectionEnabled)
         XCTAssertTrue(preferences.firstRunAcknowledged)
+        XCTAssertEqual(preferences.completedOnboardingVersion, 1)
         XCTAssertEqual(preferences.interfaceTheme, "dark")
         XCTAssertEqual(preferences.appLanguage, "russian")
+        XCTAssertFalse(preferences.compactMenuBarEnabled)
         XCTAssertEqual(preferences.workspacePath, "/tmp/project")
     }
 

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct CodexChatView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var prompt = ""
     @State private var confirmsFullAccess = false
     @FocusState private var promptFocused: Bool
@@ -48,39 +49,52 @@ struct CodexChatView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 13) {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    Text(t("Chat with Codex", "Чат с Codex"))
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    ChatStatusPill(
-                        text: model.appServerState == .running
-                            ? t("READY", "ГОТОВ")
-                            : t("OFFLINE", "НЕ В СЕТИ"),
-                        color: serverAccent
-                    )
-                    if model.chatQueuedCount > 0 {
-                        ChatStatusPill(
-                            text: t(
-                                "QUEUE \(model.chatQueuedCount)",
-                                "ОЧЕРЕДЬ \(model.chatQueuedCount)"
-                            ),
-                            color: CockpitPalette.amber
-                        )
-                    }
-                }
-                Text(
-                    t(
-                        "Streamed local Codex session · restored after restart",
-                        "Потоковая локальная сессия Codex · восстановление после перезапуска"
-                    )
-                )
-                .font(.caption)
-                .foregroundStyle(CockpitPalette.muted)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 13) {
+                chatTitle
+                Spacer()
+                chatActions
             }
+            VStack(alignment: .leading, spacing: 10) {
+                chatTitle
+                chatActions
+            }
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 11)
+    }
 
-            Spacer()
+    private var chatTitle: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                Text(t("Chat with Codex", "Чат с Codex"))
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                ChatStatusPill(
+                    text: model.appServerState == .running
+                        ? t("READY", "ГОТОВ")
+                        : t("OFFLINE", "НЕ В СЕТИ"),
+                    color: serverAccent
+                )
+                if model.chatQueuedCount > 0 {
+                    ChatStatusPill(
+                        text: t("QUEUE \(model.chatQueuedCount)", "ОЧЕРЕДЬ \(model.chatQueuedCount)"),
+                        color: CockpitPalette.amber
+                    )
+                }
+            }
+            Text(
+                t(
+                    "Streamed local Codex session · restored after restart",
+                    "Потоковая локальная сессия Codex · восстановление после перезапуска"
+                )
+            )
+            .font(.caption)
+            .foregroundStyle(CockpitPalette.muted)
+        }
+    }
 
+    private var chatActions: some View {
+        HStack(spacing: 10) {
             Menu {
                 if model.chatConversations.isEmpty {
                     Text(t("No saved chats", "Нет сохранённых чатов"))
@@ -113,79 +127,81 @@ struct CodexChatView: View {
                 Label(t("New chat", "Новый чат"), systemImage: "plus")
             }
             .buttonStyle(CockpitSecondaryButtonStyle())
+            .keyboardShortcut("n", modifiers: [.command])
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 11)
     }
 
     private var settingsBar: some View {
-        HStack(spacing: 8) {
-            Button {
-                model.chooseWorkspace()
-            } label: {
-                Label(workspaceName, systemImage: "folder")
-                    .lineLimit(1)
-            }
-            .buttonStyle(CockpitSecondaryButtonStyle())
-            .help(model.workspacePath ?? t("Choose a project", "Выберите проект"))
-
-            Picker(
-                t("Model", "Модель"),
-                selection: Binding(
-                    get: { model.chatSelectedModelID ?? "" },
-                    set: { model.setChatModel($0.isEmpty ? nil : $0) }
-                )
-            ) {
-                Text(t("Automatic", "Автоматически")).tag("")
-                ForEach(model.chatModelOptions) { option in
-                    Text(option.displayName).tag(option.model)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(maxWidth: 180)
-            .help(t("Codex model", "Модель Codex"))
-
-            Picker(
-                t("Reasoning", "Рассуждение"),
-                selection: Binding(
-                    get: { model.chatSelectedReasoningEffort ?? "" },
-                    set: { model.setChatReasoningEffort($0.isEmpty ? nil : $0) }
-                )
-            ) {
-                Text(t("Model default", "По умолчанию модели")).tag("")
-                ForEach(model.chatReasoningOptions, id: \.id) { option in
-                    Text(reasoningTitle(option.id)).tag(option.id)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(maxWidth: 150)
-            .help(t("Reasoning effort", "Глубина рассуждений"))
-
-            Menu {
-                permissionButton(.readOnly)
-                permissionButton(.workspaceWrite)
-                Divider()
-                Button(role: .destructive) {
-                    confirmsFullAccess = true
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                Button {
+                    model.chooseWorkspace()
                 } label: {
-                    Label(
-                        permissionTitle(.fullAccess),
-                        systemImage: model.chatPermissionMode == .fullAccess ? "checkmark" : "lock.open"
-                    )
+                    Label(workspaceName, systemImage: "folder")
+                        .lineLimit(1)
                 }
-            } label: {
-                Label(permissionTitle(model.chatPermissionMode), systemImage: permissionIcon)
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help(permissionDescription(model.chatPermissionMode))
+                .buttonStyle(CockpitSecondaryButtonStyle())
+                .help(model.workspacePath ?? t("Choose a project", "Выберите проект"))
 
-            Spacer(minLength: 0)
+                Picker(
+                    t("Model", "Модель"),
+                    selection: Binding(
+                        get: { model.chatSelectedModelID ?? "" },
+                        set: { model.setChatModel($0.isEmpty ? nil : $0) }
+                    )
+                ) {
+                    Text(t("Automatic", "Автоматически")).tag("")
+                    ForEach(model.chatModelOptions) { option in
+                        Text(option.displayName).tag(option.model)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 180)
+                .help(t("Codex model", "Модель Codex"))
+
+                Picker(
+                    t("Reasoning", "Рассуждение"),
+                    selection: Binding(
+                        get: { model.chatSelectedReasoningEffort ?? "" },
+                        set: { model.setChatReasoningEffort($0.isEmpty ? nil : $0) }
+                    )
+                ) {
+                    Text(t("Model default", "По умолчанию модели")).tag("")
+                    ForEach(model.chatReasoningOptions, id: \.id) { option in
+                        Text(reasoningTitle(option.id)).tag(option.id)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 150)
+                .help(t("Reasoning effort", "Глубина рассуждений"))
+
+                Menu {
+                    permissionButton(.readOnly)
+                    permissionButton(.workspaceWrite)
+                    Divider()
+                    Button(role: .destructive) {
+                        confirmsFullAccess = true
+                    } label: {
+                        Label(
+                            permissionTitle(.fullAccess),
+                            systemImage: model.chatPermissionMode == .fullAccess ? "checkmark" : "lock.open"
+                        )
+                    }
+                } label: {
+                    Label(permissionTitle(model.chatPermissionMode), systemImage: permissionIcon)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help(permissionDescription(model.chatPermissionMode))
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 5)
         }
+        .scrollIndicators(.hidden)
         .font(.system(size: 10, weight: .medium))
-        .padding(.horizontal, 5)
         .padding(.bottom, 10)
         .disabled(model.chatIsSending)
     }
@@ -343,9 +359,17 @@ struct CodexChatView: View {
         if model.chatIsSending,
             !model.chatMessages.contains(where: { $0.isStreaming })
         {
-            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo("thinking", anchor: .bottom) }
+            if reduceMotion {
+                proxy.scrollTo("thinking", anchor: .bottom)
+            } else {
+                withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo("thinking", anchor: .bottom) }
+            }
         } else if let last = model.chatMessages.last {
-            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(last.id, anchor: .bottom) }
+            if reduceMotion {
+                proxy.scrollTo(last.id, anchor: .bottom)
+            } else {
+                withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(last.id, anchor: .bottom) }
+            }
         }
     }
 
