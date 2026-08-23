@@ -13,6 +13,7 @@ public actor AwakeCoordinator {
     private var codexDesktopRunning = false
     private var codexDesktopActiveCount = 0
     private var latestSnapshot = ActivitySnapshot()
+    private var automationDemand: Bool?
     private var pendingRelease: Task<Void, Never>?
 
     public init(
@@ -51,12 +52,28 @@ public actor AwakeCoordinator {
         await evaluate()
     }
 
+    /// Supplies the final result of the typed automation policy. `nil` restores
+    /// the legacy activity-based decision used by older clients and tests.
+    public func setAutomationDemand(_ demand: Bool?) async {
+        automationDemand = demand
+        await evaluate()
+    }
+
     private func evaluate() async {
         pendingRelease?.cancel()
         pendingRelease = nil
 
         guard autoKeepAwake else {
             await power.release()
+            return
+        }
+
+        if let automationDemand {
+            if automationDemand {
+                await acquireAssertion()
+            } else {
+                scheduleRelease(after: idleDebounce)
+            }
             return
         }
 
@@ -101,7 +118,9 @@ public actor AwakeCoordinator {
         pendingRelease?.cancel()
         pendingRelease = nil
         latestSnapshot = ActivitySnapshot()
-        if autoKeepAwake,
+        if autoKeepAwake, automationDemand == true {
+            await acquireAssertion()
+        } else if autoKeepAwake, automationDemand == nil,
             codexDesktopActiveCount > 0 || (keepAwakeForCodexDesktop && codexDesktopRunning)
         {
             await acquireAssertion()

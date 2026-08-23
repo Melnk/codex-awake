@@ -17,6 +17,18 @@ codesign --verify --strict "$APP/Contents/Library/PrivilegedHelperTools/$HELPER_
 /usr/bin/plutil -lint "$APP/Contents/Resources/$HELPER_LABEL.plist"
 test -x "$APP/Contents/Resources/install-closed-lid-helper.sh"
 test -x "$APP/Contents/Resources/uninstall-closed-lid-helper.sh"
+test -s "$APP/Contents/Resources/Metadata.appintents/version.json"
+test -s "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata"
+grep -q 'ToggleCodexAwakeProtectionIntent' "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata"
+grep -q 'ApplyCodexAwakeProfileIntent' "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata"
+grep -q 'GetCodexAwakeStatusIntent' "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata"
+
+WIDGET="$APP/Contents/PlugIns/CodexAwakeWidget.appex"
+[[ -x "$WIDGET/Contents/MacOS/CodexAwakeWidget" ]]
+[[ "$(plutil -extract CFBundleIdentifier raw "$WIDGET/Contents/Info.plist")" == "com.melnikoleg.CodexAwake.StatusWidget" ]]
+[[ "$(plutil -extract CFBundleShortVersionString raw "$WIDGET/Contents/Info.plist")" == "$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")" ]]
+[[ "$(plutil -extract CFBundleVersion raw "$WIDGET/Contents/Info.plist")" == "$(plutil -extract CFBundleVersion raw "$APP/Contents/Info.plist")" ]]
+codesign --verify --strict "$WIDGET"
 
 SWIFT_FILES=()
 while IFS= read -r -d '' file; do

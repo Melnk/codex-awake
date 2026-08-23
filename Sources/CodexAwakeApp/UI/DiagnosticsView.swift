@@ -53,6 +53,7 @@ struct DiagnosticsView: View {
             HStack {
                 Button(t("Copy Diagnostics", "Скопировать диагностику")) { model.copyDiagnostics() }
                     .keyboardShortcut("c", modifiers: [.command, .shift])
+                Button(t("Export Report…", "Экспортировать отчёт…")) { model.exportDiagnostics() }
                 Button(t("Choose Codex Binary…", "Выбрать исполняемый файл Codex…")) { model.chooseCodexBinary() }
                 if model.closedLidProtection.helperInstalled {
                     if !model.closedLidProtection.helperReachable {

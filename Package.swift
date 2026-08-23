@@ -12,6 +12,7 @@ let package = Package(
         .executable(name: "CodexAwake", targets: ["CodexAwakeApp"]),
         .executable(name: "CodexAwakeClosedLidHelper", targets: ["CodexAwakeClosedLidHelper"]),
         .executable(name: "CodexAwakeProtocolProbe", targets: ["CodexAwakeProtocolProbe"]),
+        .executable(name: "CodexAwakeWidget", targets: ["CodexAwakeWidget"]),
     ],
     targets: [
         .target(
@@ -25,7 +26,16 @@ let package = Package(
         .executableTarget(
             name: "CodexAwakeApp",
             dependencies: ["CodexAwakeCore"],
-            path: "Sources/CodexAwakeApp"
+            path: "Sources/CodexAwakeApp",
+            swiftSettings: [
+                .unsafeFlags(
+                    [
+                        "-emit-const-values",
+                        "-Xfrontend", "-const-gather-protocols-file",
+                        "-Xfrontend", "Resources/AppIntentsConstProtocols.json",
+                    ]
+                )
+            ]
         ),
         .executableTarget(
             name: "CodexAwakeClosedLidHelper",
@@ -36,6 +46,15 @@ let package = Package(
             name: "CodexAwakeProtocolProbe",
             dependencies: ["CodexAwakeCore"],
             path: "Sources/CodexAwakeProtocolProbe"
+        ),
+        .executableTarget(
+            name: "CodexAwakeWidget",
+            dependencies: ["CodexAwakeCore"],
+            path: "Sources/CodexAwakeWidget",
+            linkerSettings: [
+                .linkedFramework("SwiftUI"),
+                .linkedFramework("WidgetKit"),
+            ]
         ),
         .testTarget(
             name: "CodexAwakeTests",

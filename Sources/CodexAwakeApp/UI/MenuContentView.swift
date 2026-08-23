@@ -47,6 +47,9 @@ struct MenuContentView: View {
                 get: { model.autoKeepAwake },
                 set: { model.setAutoKeepAwake($0) }
             ))
+        Menu(t("Automation Profile", "Профиль автоматизации")) {
+            profileButtons
+        }
         Button(t("Show All Controls", "Показать все настройки")) {
             model.setCompactMenuBarEnabled(false)
         }
@@ -67,6 +70,8 @@ struct MenuContentView: View {
         Text("\(t("System sleep", "Системный сон")): \(systemSleepStatus)")
         Text("\(t("Display sleep", "Выключение экрана")): \(displaySleepStatus)")
         Text("\(t("Closed-Lid", "Закрытая крышка")): \(closedLidMenuStatus)")
+        Text("\(t("Profile", "Профиль")): \(profileTitle(model.selectedProtectionProfile))")
+        Text("\(t("Power", "Питание")): \(model.isOnExternalPower ? t("Charger", "Зарядка") : t("Battery", "Батарея"))")
 
         if model.activity.certainty == .unknownReconnecting {
             Text(t("Activity unknown — reconnecting", "Статус неизвестен — переподключение"))
@@ -131,6 +136,9 @@ struct MenuContentView: View {
                 get: { model.autoKeepAwake },
                 set: { model.setAutoKeepAwake($0) }
             ))
+        Menu(t("Automation Profile", "Профиль автоматизации")) {
+            profileButtons
+        }
         Toggle(
             t("Prevent Mac Sleep", "Не давать Mac уснуть"),
             isOn: Binding(
@@ -219,6 +227,9 @@ struct MenuContentView: View {
         Divider()
         Button(t("Diagnostics…", "Диагностика…")) { openWindow(id: "diagnostics") }
             .keyboardShortcut(",")
+        Button(t("Export Diagnostic Report…", "Экспортировать диагностический отчёт…")) {
+            model.exportDiagnostics()
+        }
         Button(t("Show Welcome Guide…", "Показать вводный гид…")) {
             model.showOnboarding()
             openWindow(id: "cockpit")
@@ -243,6 +254,30 @@ struct MenuContentView: View {
         case .waitingForApproval: t("approval", "подтверждение")
         case .completed: t("done", "готово")
         case .error: t("error", "ошибка")
+        }
+    }
+
+    @ViewBuilder
+    private var profileButtons: some View {
+        ForEach(ProtectionProfileID.allCases) { profile in
+            Button {
+                model.applyProtectionProfile(profile)
+            } label: {
+                if model.selectedProtectionProfile == profile {
+                    Label(profileTitle(profile), systemImage: "checkmark")
+                } else {
+                    Text(profileTitle(profile))
+                }
+            }
+        }
+    }
+
+    private func profileTitle(_ profile: ProtectionProfileID) -> String {
+        switch profile {
+        case .work: t("Work", "Работа")
+        case .nightTask: t("Night Task", "Ночная задача")
+        case .closedLid: t("Closed Lid", "Закрытая крышка")
+        case .presentation: t("Presentation", "Презентация")
         }
     }
 

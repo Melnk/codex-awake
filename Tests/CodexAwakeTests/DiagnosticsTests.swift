@@ -16,4 +16,17 @@ final class DiagnosticsTests: XCTestCase {
         XCTAssertTrue(store.sanitizedText.contains("Recent operational events"))
         XCTAssertFalse(store.sanitizedText.contains("first"))
     }
+
+    func testDiagnosticRedactorRemovesHomePathAndCredentialShapes() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let raw = "\(home)/project Authorization: Bearer secret-token-123 api_key=private-value sk-testsecret123"
+
+        let sanitized = SafeDisplay.sanitizedText(raw)
+
+        XCTAssertFalse(sanitized.contains(home))
+        XCTAssertFalse(sanitized.contains("secret-token-123"))
+        XCTAssertFalse(sanitized.contains("private-value"))
+        XCTAssertFalse(sanitized.contains("sk-testsecret123"))
+        XCTAssertTrue(sanitized.contains("[REDACTED]"))
+    }
 }

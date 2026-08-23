@@ -274,6 +274,7 @@ struct CockpitView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 powerControl
+                AutomationView()
                 powerModesControl
                 closedLidControl
 
@@ -294,21 +295,6 @@ struct CockpitView: View {
 
                 activeTasks
                 externalChatGPTNotice
-                PremiumToggleCard(
-                    title: t("Sleep when Codex is idle", "Сон без активных задач"),
-                    subtitle: t(
-                        "Codex may stay open; normal macOS sleep timers resume",
-                        "Codex может быть открыт — обычные таймеры сна macOS снова работают"
-                    ),
-                    icon: "moon.stars",
-                    accent: CockpitPalette.violetSoft,
-                    language: model.appLanguage,
-                    isOn: Binding(
-                        get: { model.allowSleepWhenCodexIdle },
-                        set: { model.setAllowSleepWhenCodexIdle($0) }
-                    )
-                )
-
                 launchAtLoginControl
 
                 HStack(spacing: 10) {
@@ -685,6 +671,34 @@ struct CockpitView: View {
             return t("Reconnecting automatically", "Автоматическое переподключение")
         }
         if model.closedLidProtectionEnabled {
+            if !model.autoKeepAwake {
+                return t(
+                    "Blocked — turn on Sleep protection first",
+                    "Заблокирован — сначала включите защиту от сна"
+                )
+            }
+            if !model.automationDecision.shouldProtect,
+                let blocker = model.automationDecision.blockers.first
+            {
+                switch blocker {
+                case .externalPowerRequired:
+                    return t(
+                        "Blocked — connect power or turn off “Only on external power”",
+                        "Заблокирован — подключите зарядку или выключите «Только от зарядки»"
+                    )
+                case .noActiveTasks:
+                    return t(
+                        "Waiting — start a task or turn off automatic stop",
+                        "Ожидание — запустите задачу или выключите автоотключение"
+                    )
+                case .codexNotRunning:
+                    return t("Waiting for Codex to start", "Ожидание запуска Codex")
+                case .outsideSchedule:
+                    return t("Blocked by the current schedule", "Заблокирован текущим расписанием")
+                case .noSelectedProjectActive:
+                    return t("Waiting for a selected project", "Ожидание выбранного проекта")
+                }
+            }
             return t("Ready — starts with protected work", "Готов — включится при защищённой работе")
         }
         return t("Off — closing the lid sleeps normally", "Выключен — при закрытии крышки Mac уснёт")

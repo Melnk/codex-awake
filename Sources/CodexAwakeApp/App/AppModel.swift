@@ -3,6 +3,10 @@ import CodexAwakeCore
 import Combine
 import Foundation
 import OSLog
+import UniformTypeIdentifiers
+#if canImport(WidgetKit)
+    import WidgetKit
+#endif
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -34,6 +38,11 @@ final class AppModel: ObservableObject {
     @Published var appLanguage: AppLanguage
     @Published var compactMenuBarEnabled: Bool
     @Published var taskSnapshot = CodexTaskSnapshot()
+    @Published var automationRules: ProtectionAutomationRules
+    @Published var selectedProtectionProfile: ProtectionProfileID
+    @Published var automationDecision = ProtectionAutomationDecision(shouldProtect: false)
+    @Published var isOnExternalPower = false
+    @Published var protectionStatistics = ProtectionStatisticsSnapshot()
 
     let diagnostics = DiagnosticsStore()
     let chat: CodexChatSession
@@ -48,6 +57,9 @@ final class AppModel: ObservableObject {
     private let binaryLocator = CodexBinaryLocator()
     private let socketManager = SocketPathManager()
     private let launchManager = LaunchAtLoginManager()
+    private let automationEngine = ProtectionAutomationEngine()
+    private let powerSourceProvider: any PowerSourceProviding
+    private let statisticsStore: ProtectionStatisticsStore
     private lazy var supervisor = AppServerSupervisor { [weak self] state, pid in
         await self?.handleSupervisorState(state, pid: pid)
     }
@@ -55,6 +67,7 @@ final class AppModel: ObservableObject {
     private var runtime: SocketPathManager.Runtime?
     private var connectionLoopTask: Task<Void, Never>?
     private var closedLidStatusTask: Task<Void, Never>?
+    private var automationStatusTask: Task<Void, Never>?
     private var chatObservation: AnyCancellable?
     private var diagnosticsObservation: AnyCancellable?
     private var isShuttingDown = false
@@ -63,8 +76,14 @@ final class AppModel: ObservableObject {
     private let startedAt = Date()
     private var didLoadTaskRegistry = false
 
-    init(preferences: any AppPreferencesStoring = UserDefaultsAppPreferences()) {
+    init(
+        preferences: any AppPreferencesStoring = UserDefaultsAppPreferences(),
+        powerSourceProvider: any PowerSourceProviding = SystemPowerSourceProvider(),
+        statisticsStore: ProtectionStatisticsStore = ProtectionStatisticsStore()
+    ) {
         self.preferences = preferences
+        self.powerSourceProvider = powerSourceProvider
+        self.statisticsStore = statisticsStore
         let auto = preferences.autoKeepAwake
         let preventSystemSleep = preferences.preventSystemSleep
         let preventDisplaySleep = preferences.preventDisplaySleep
@@ -80,6 +99,20 @@ final class AppModel: ObservableObject {
             ) ?? .systemDefault
         appLanguage = selectedLanguage
         compactMenuBarEnabled = preferences.compactMenuBarEnabled
+        var savedAutomationRules = preferences.automationRules
+        let savedProtectionProfile = preferences.protectionProfileID
+        if preferences.automationSchemaVersion < Self.automationSchemaVersion,
+            savedProtectionProfile == .closedLid
+        {
+            // 2.0 originally made charger power mandatory for this preset. The
+            // root helper itself can maintain a lease on battery, so keep that
+            // restriction opt-in and migrate the misleading saved preset once.
+            savedAutomationRules.requiresExternalPower = false
+            preferences.setAutomationRules(savedAutomationRules)
+        }
+        preferences.setAutomationSchemaVersion(Self.automationSchemaVersion)
+        automationRules = savedAutomationRules
+        selectedProtectionProfile = savedProtectionProfile
         chat = CodexChatSession(language: selectedLanguage)
         autoKeepAwake = auto
         self.preventSystemSleep = preventSystemSleep
@@ -117,6 +150,7 @@ final class AppModel: ObservableObject {
         diagnosticsObservation = diagnostics.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
+        AutomationCommandCenter.shared.model = self
     }
 
     func start() {
@@ -131,6 +165,7 @@ final class AppModel: ObservableObject {
             self?.handleCodexDesktopSnapshot(snapshot)
         }
         startClosedLidStatusMonitoring()
+        startAutomationMonitoring()
         Task {
             await chat.restore(defaultWorkspacePath: workspacePath)
             if let restoredWorkspace = chat.activeConversation?.settings.workspacePath,
@@ -268,9 +303,12 @@ final class AppModel: ObservableObject {
     func setKeepAwakeForCodexDesktop(_ enabled: Bool) {
         keepAwakeForCodexDesktop = enabled
         preferences.setKeepAwakeForCodexDesktop(enabled)
+        automationRules.trigger = enabled ? .codexRunning : .activeTasks
+        automationRules.automaticallyStopsAfterTasks = !enabled
+        preferences.setAutomationRules(automationRules)
         Task {
             await coordinator.setKeepAwakeForCodexDesktop(enabled)
-            await refreshPublishedState()
+            await evaluateAutomation()
         }
     }
 
@@ -475,6 +513,125 @@ final class AppModel: ObservableObject {
         !keepAwakeForCodexDesktop
     }
 
+    func applyProtectionProfile(_ id: ProtectionProfileID) {
+        let profile = ProtectionProfile.preset(id)
+        selectedProtectionProfile = id
+        automationRules = profile.rules
+        preventSystemSleep = profile.power.preventSystemSleep
+        preventDisplaySleep = profile.power.preventDisplaySleep
+        keepAwakeForCodexDesktop =
+            profile.rules.trigger == .codexRunning
+            && !profile.rules.automaticallyStopsAfterTasks
+        preferences.setProtectionProfileID(id)
+        preferences.setAutomationRules(profile.rules)
+        preferences.setPreventSystemSleep(preventSystemSleep)
+        preferences.setPreventDisplaySleep(preventDisplaySleep)
+        preferences.setKeepAwakeForCodexDesktop(keepAwakeForCodexDesktop)
+        appendEvent(
+            .success,
+            "Automation profile applied: \(id.rawValue).",
+            "Применён профиль автоматизации: \(id.rawValue)."
+        )
+        if closedLidProtectionEnabled != profile.closedLidEnabled {
+            setClosedLidProtectionEnabled(profile.closedLidEnabled)
+        }
+        Task {
+            do {
+                try await power.setAssertionConfiguration(profile.power)
+            } catch {
+                record(error)
+            }
+            await coordinator.setKeepAwakeForCodexDesktop(keepAwakeForCodexDesktop)
+            await evaluateAutomation()
+        }
+    }
+
+    func setAutomationTrigger(_ trigger: ProtectionTrigger) {
+        automationRules.trigger = trigger
+        keepAwakeForCodexDesktop =
+            trigger == .codexRunning
+            && !automationRules.automaticallyStopsAfterTasks
+        persistAutomationRules()
+    }
+
+    func setRequiresExternalPower(_ enabled: Bool) {
+        automationRules.requiresExternalPower = enabled
+        persistAutomationRules()
+    }
+
+    func setAutomaticallyStopsAfterTasks(_ enabled: Bool) {
+        automationRules.automaticallyStopsAfterTasks = enabled
+        keepAwakeForCodexDesktop = automationRules.trigger == .codexRunning && !enabled
+        persistAutomationRules()
+    }
+
+    func setScheduleEnabled(_ enabled: Bool) {
+        automationRules.schedule.isEnabled = enabled
+        persistAutomationRules()
+    }
+
+    func setScheduleStartMinute(_ minute: Int) {
+        automationRules.schedule.startMinute = min(max(minute, 0), 23 * 60 + 59)
+        persistAutomationRules()
+    }
+
+    func setScheduleEndMinute(_ minute: Int) {
+        automationRules.schedule.endMinute = min(max(minute, 0), 23 * 60 + 59)
+        persistAutomationRules()
+    }
+
+    func toggleScheduleWeekday(_ weekday: AutomationWeekday) {
+        if automationRules.schedule.weekdays.contains(weekday) {
+            automationRules.schedule.weekdays.remove(weekday)
+        } else {
+            automationRules.schedule.weekdays.insert(weekday)
+        }
+        persistAutomationRules()
+    }
+
+    func addAutomationProjects() {
+        let panel = NSOpenPanel()
+        panel.title = t("Choose projects for protection", "Выберите проекты для защиты")
+        panel.prompt = t("Add Projects", "Добавить проекты")
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK {
+            automationRules.selectedProjectPaths.append(contentsOf: panel.urls.map(\.path))
+            automationRules.normalizeProjectPaths()
+            persistAutomationRules()
+        }
+    }
+
+    func removeAutomationProject(_ path: String) {
+        automationRules.selectedProjectPaths.removeAll { $0 == path }
+        persistAutomationRules()
+    }
+
+    func handleAutomationURL(_ url: URL) {
+        guard url.scheme?.lowercased() == "codexawake" else { return }
+        let action = url.pathComponents.dropFirst().first?.lowercased()
+        switch (url.host?.lowercased(), action) {
+        case ("protection", "on"):
+            setAutoKeepAwake(true)
+        case ("protection", "off"):
+            setAutoKeepAwake(false)
+        case ("protection", "toggle"):
+            setAutoKeepAwake(!autoKeepAwake)
+        case ("profile", let value?):
+            let normalized = value.replacingOccurrences(of: "-", with: "")
+            if let id = ProtectionProfileID.allCases.first(where: {
+                $0.rawValue.lowercased() == normalized
+            }) {
+                applyProtectionProfile(id)
+            }
+        case ("open", "cockpit"):
+            NotificationCenter.default.post(name: .codexAwakeOpenCockpit, object: nil)
+        default:
+            break
+        }
+    }
+
     func copyCodexCommand() {
         guard let codexCommand else { return }
         NSPasteboard.general.clearContents()
@@ -504,6 +661,25 @@ final class AppModel: ObservableObject {
     func copyDiagnostics() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(diagnostics.sanitizedText, forType: .string)
+    }
+
+    func exportDiagnostics() {
+        let panel = NSSavePanel()
+        panel.title = t("Export privacy-safe diagnostics", "Экспорт безопасной диагностики")
+        panel.nameFieldStringValue = "CodexAwake-diagnostics-\(Self.exportDateFormatter.string(from: Date())).txt"
+        panel.allowedContentTypes = [.plainText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try diagnostics.sanitizedText.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            appendEvent(
+                .success,
+                "Privacy-safe diagnostic report exported.",
+                "Безопасный диагностический отчёт экспортирован."
+            )
+        } catch {
+            record(error)
+        }
     }
 
     func chooseCodexBinary() {
@@ -663,6 +839,8 @@ final class AppModel: ObservableObject {
         desktopMonitor.stop()
         closedLidStatusTask?.cancel()
         closedLidStatusTask = nil
+        automationStatusTask?.cancel()
+        automationStatusTask = nil
         chat.cancelPendingApprovals()
         await chat.flushPersistence()
         connectionLoopTask?.cancel()
@@ -673,6 +851,12 @@ final class AppModel: ObservableObject {
         await coordinator.shutdown()
         assertionHeld = false
         powerAssertions = .init()
+        do {
+            protectionStatistics = try await statisticsStore.record(isActive: false)
+        } catch {
+            logger.error("Could not persist protection statistics")
+        }
+        publishSharedStatus()
         logger.notice("CodexAwake lifecycle stopped")
     }
 
@@ -849,6 +1033,11 @@ final class AppModel: ObservableObject {
         let previousAssertions = powerAssertions
         powerAssertions = await power.assertionSnapshot()
         assertionHeld = powerAssertions.anyAssertionHeld
+        do {
+            protectionStatistics = try await statisticsStore.record(isActive: assertionHeld)
+        } catch {
+            logger.error("Could not persist protection statistics")
+        }
         if powerAssertions.anyAssertionHeld, !previousAssertions.anyAssertionHeld {
             appendEvent(
                 .success,
@@ -862,6 +1051,7 @@ final class AppModel: ObservableObject {
                 "Системные блокировки сна сняты; обычный режим сна восстановлен."
             )
         }
+        publishSharedStatus()
         updateDiagnostics()
     }
 
@@ -891,6 +1081,11 @@ final class AppModel: ObservableObject {
         value.lastReconciliationAt = lastReconciliationAt
         value.reconnectCount = reconnectCount
         value.lastSafeError = lastSafeError
+        value.protectionProfile = selectedProtectionProfile
+        value.automationRules = automationRules
+        value.automationDecision = automationDecision
+        value.isOnExternalPower = isOnExternalPower
+        value.protectionStatistics = protectionStatistics
         diagnostics.snapshot = value
     }
 
@@ -902,8 +1097,63 @@ final class AppModel: ObservableObject {
             publishTaskSnapshot(taskState)
             await coordinator.setCodexDesktopRunning(snapshot.isRunning)
             await coordinator.setCodexDesktopActiveCount(snapshot.activeSessionIDs.count)
-            await refreshPublishedState()
+            await evaluateAutomation()
         }
+    }
+
+    private func startAutomationMonitoring() {
+        guard automationStatusTask == nil else { return }
+        automationStatusTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                protectionStatistics = try await statisticsStore.load()
+            } catch {
+                record(error)
+            }
+            while !Task.isCancelled {
+                await evaluateAutomation()
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            }
+        }
+    }
+
+    private func evaluateAutomation() async {
+        isOnExternalPower = powerSourceProvider.isOnExternalPower()
+        let context = ProtectionAutomationContext(
+            codexIsRunning: codexDesktopRunning,
+            activeTaskCount: taskSnapshot.activeCount,
+            activeTaskProjectPaths: taskSnapshot.active.compactMap(\.workspacePath),
+            isOnExternalPower: isOnExternalPower
+        )
+        automationDecision = automationEngine.evaluate(rules: automationRules, context: context)
+        await coordinator.setAutomationDemand(automationDecision.shouldProtect)
+        await refreshPublishedState()
+    }
+
+    private func persistAutomationRules() {
+        automationRules.normalizeProjectPaths()
+        preferences.setAutomationRules(automationRules)
+        preferences.setKeepAwakeForCodexDesktop(keepAwakeForCodexDesktop)
+        Task {
+            await coordinator.setKeepAwakeForCodexDesktop(keepAwakeForCodexDesktop)
+            await evaluateAutomation()
+        }
+    }
+
+    private func publishSharedStatus() {
+        let value = SharedStatusSnapshot(
+            protectionEnabled: autoKeepAwake,
+            assertionHeld: assertionHeld,
+            activeTaskCount: taskSnapshot.activeCount,
+            profile: selectedProtectionProfile,
+            isOnExternalPower: isOnExternalPower,
+            protectedSeconds: protectionStatistics.protectedSeconds,
+            sleepPreventionSessions: protectionStatistics.sleepPreventionSessions
+        )
+        SharedStatusStorage.write(value)
+        #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadTimelines(ofKind: "CodexAwakeStatusWidget")
+        #endif
     }
 
     private func startClosedLidStatusMonitoring() {
@@ -1045,6 +1295,7 @@ final class AppModel: ObservableObject {
         let previous = Dictionary(uniqueKeysWithValues: taskSnapshot.all.map { ($0.id, $0) })
         taskSnapshot = snapshot
         NSApplication.shared.dockTile.badgeLabel = snapshot.activeCount > 0 ? "\(snapshot.activeCount)" : nil
+        Task { await evaluateAutomation() }
 
         guard notifyTransitions else { return }
         for task in snapshot.all {
@@ -1074,4 +1325,13 @@ final class AppModel: ObservableObject {
             return "unknown"
         #endif
     }
+
+    private static let exportDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        return formatter
+    }()
+
+    private static let automationSchemaVersion = 2
 }

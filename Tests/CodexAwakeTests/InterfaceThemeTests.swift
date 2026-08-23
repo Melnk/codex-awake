@@ -96,4 +96,46 @@ final class OnboardingStateTests: XCTestCase {
         relaunchedModel.acknowledgeFirstRun()
         XCTAssertTrue(relaunchedModel.firstRunAcknowledged)
     }
+
+    func testСтарыйПрофильЗакрытойКрышкиНеБлокируетсяОтсутствиемЗарядки() throws {
+        // Arrange
+        let suiteName = "CodexAwakeClosedLidMigrationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = UserDefaultsAppPreferences(defaults: defaults)
+        preferences.setProtectionProfileID(.closedLid)
+        preferences.setAutomationRules(
+            ProtectionAutomationRules(
+                trigger: .activeTasks,
+                requiresExternalPower: true,
+                automaticallyStopsAfterTasks: true
+            )
+        )
+        preferences.setAutomationSchemaVersion(1)
+
+        // Act
+        let model = AppModel(preferences: preferences)
+
+        // Assert
+        XCTAssertFalse(model.automationRules.requiresExternalPower)
+        XCTAssertFalse(preferences.automationRules.requiresExternalPower)
+        XCTAssertEqual(preferences.automationSchemaVersion, 2)
+    }
+
+    func testURLАвтоматизацииПрименяетПрофиль() throws {
+        // Arrange
+        let suiteName = "CodexAwakeAutomationURLTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let model = AppModel(preferences: UserDefaultsAppPreferences(defaults: defaults))
+        let url = try XCTUnwrap(URL(string: "codexawake://profile/night-task"))
+
+        // Act
+        model.handleAutomationURL(url)
+
+        // Assert
+        XCTAssertEqual(model.selectedProtectionProfile, .nightTask)
+        XCTAssertTrue(model.automationRules.requiresExternalPower)
+        XCTAssertTrue(model.automationRules.schedule.isEnabled)
+    }
 }

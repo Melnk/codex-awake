@@ -1,4 +1,5 @@
 import AppKit
+import CodexAwakeCore
 import SwiftUI
 
 extension Notification.Name {
@@ -31,6 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         NotificationCenter.default.post(name: .codexAwakeOpenCockpit, object: nil)
         return true
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            model?.handleAutomationURL(url)
+        }
     }
 }
 
@@ -69,6 +76,24 @@ struct CodexAwakeApp: App {
         .defaultSize(width: 1080, height: 720)
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandMenu(model.appLanguage.text("Automation", "Автоматизация")) {
+                Button(model.appLanguage.text("Toggle Protection", "Переключить защиту")) {
+                    model.setAutoKeepAwake(!model.autoKeepAwake)
+                }
+                .keyboardShortcut("a", modifiers: [.command, .option])
+
+                Divider()
+                Button(profileCommandTitle(.work)) { model.applyProtectionProfile(.work) }
+                    .keyboardShortcut("1", modifiers: [.command, .option])
+                Button(profileCommandTitle(.nightTask)) { model.applyProtectionProfile(.nightTask) }
+                    .keyboardShortcut("2", modifiers: [.command, .option])
+                Button(profileCommandTitle(.closedLid)) { model.applyProtectionProfile(.closedLid) }
+                    .keyboardShortcut("3", modifiers: [.command, .option])
+                Button(profileCommandTitle(.presentation)) { model.applyProtectionProfile(.presentation) }
+                    .keyboardShortcut("4", modifiers: [.command, .option])
+            }
+        }
 
         Window("CodexAwake Diagnostics", id: "diagnostics") {
             DiagnosticsView()
@@ -89,6 +114,15 @@ struct CodexAwakeApp: App {
         }
         if model.assertionHeld || model.closedLidProtection.leaseActive { return "bolt.circle.fill" }
         return "bolt.circle"
+    }
+
+    private func profileCommandTitle(_ profile: ProtectionProfileID) -> String {
+        switch profile {
+        case .work: model.appLanguage.text("Profile: Work", "Профиль: Работа")
+        case .nightTask: model.appLanguage.text("Profile: Night Task", "Профиль: Ночная задача")
+        case .closedLid: model.appLanguage.text("Profile: Closed Lid", "Профиль: Закрытая крышка")
+        case .presentation: model.appLanguage.text("Profile: Presentation", "Профиль: Презентация")
+        }
     }
 
 }

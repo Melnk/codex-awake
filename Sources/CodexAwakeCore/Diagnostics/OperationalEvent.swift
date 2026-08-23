@@ -24,7 +24,11 @@ public struct OperationalEvent: Identifiable, Equatable, Sendable {
         self.id = id
         self.timestamp = timestamp
         self.level = level
-        self.english = String(english.replacingOccurrences(of: "\n", with: " ").prefix(300))
-        self.russian = String(russian.replacingOccurrences(of: "\n", with: " ").prefix(300))
+        self.english = String(
+            SafeDisplay.sanitizedText(english).replacingOccurrences(of: "\n", with: " ").prefix(300)
+        )
+        self.russian = String(
+            SafeDisplay.sanitizedText(russian).replacingOccurrences(of: "\n", with: " ").prefix(300)
+        )
     }
 }

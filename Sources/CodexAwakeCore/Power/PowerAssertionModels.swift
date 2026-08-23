@@ -1,6 +1,6 @@
 import Foundation
 
-public struct PowerAssertionConfiguration: Equatable, Sendable {
+public struct PowerAssertionConfiguration: Codable, Equatable, Sendable {
     public var preventSystemSleep: Bool
     public var preventDisplaySleep: Bool
 

@@ -12,6 +12,9 @@ public protocol AppPreferencesStoring: Sendable {
     var appLanguage: String? { get }
     var compactMenuBarEnabled: Bool { get }
     var workspacePath: String? { get }
+    var automationRules: ProtectionAutomationRules { get }
+    var protectionProfileID: ProtectionProfileID { get }
+    var automationSchemaVersion: Int { get }
 
     func setAutoKeepAwake(_ enabled: Bool)
     func setPreventSystemSleep(_ enabled: Bool)
@@ -24,6 +27,9 @@ public protocol AppPreferencesStoring: Sendable {
     func setAppLanguage(_ language: String)
     func setCompactMenuBarEnabled(_ enabled: Bool)
     func setWorkspacePath(_ path: String?)
+    func setAutomationRules(_ rules: ProtectionAutomationRules)
+    func setProtectionProfileID(_ id: ProtectionProfileID)
+    func setAutomationSchemaVersion(_ version: Int)
 }
 
 public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked Sendable {
@@ -39,6 +45,9 @@ public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked
         static let appLanguage = "AppLanguage"
         static let compactMenuBarEnabled = "CompactMenuBarEnabled"
         static let workspacePath = "CodexWorkspacePath"
+        static let automationRules = "ProtectionAutomationRules"
+        static let protectionProfileID = "ProtectionProfileID"
+        static let automationSchemaVersion = "AutomationSchemaVersion"
     }
 
     private let defaults: UserDefaults
@@ -91,6 +100,29 @@ public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked
         defaults.string(forKey: Key.workspacePath)
     }
 
+    public var automationRules: ProtectionAutomationRules {
+        guard
+            let data = defaults.data(forKey: Key.automationRules),
+            let value = try? JSONDecoder().decode(ProtectionAutomationRules.self, from: data)
+        else {
+            return ProtectionAutomationRules(
+                trigger: keepAwakeForCodexDesktop ? .codexRunning : .activeTasks,
+                automaticallyStopsAfterTasks: !keepAwakeForCodexDesktop
+            )
+        }
+        return value
+    }
+
+    public var protectionProfileID: ProtectionProfileID {
+        defaults.string(forKey: Key.protectionProfileID)
+            .flatMap(ProtectionProfileID.init(rawValue:))
+            ?? (keepAwakeForCodexDesktop ? .presentation : .work)
+    }
+
+    public var automationSchemaVersion: Int {
+        defaults.integer(forKey: Key.automationSchemaVersion)
+    }
+
     public func setAutoKeepAwake(_ enabled: Bool) {
         defaults.set(enabled, forKey: Key.autoKeepAwake)
     }
@@ -137,5 +169,18 @@ public final class UserDefaultsAppPreferences: AppPreferencesStoring, @unchecked
         } else {
             defaults.removeObject(forKey: Key.workspacePath)
         }
+    }
+
+    public func setAutomationRules(_ rules: ProtectionAutomationRules) {
+        guard let data = try? JSONEncoder().encode(rules) else { return }
+        defaults.set(data, forKey: Key.automationRules)
+    }
+
+    public func setProtectionProfileID(_ id: ProtectionProfileID) {
+        defaults.set(id.rawValue, forKey: Key.protectionProfileID)
+    }
+
+    public func setAutomationSchemaVersion(_ version: Int) {
+        defaults.set(max(0, version), forKey: Key.automationSchemaVersion)
     }
 }

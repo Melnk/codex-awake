@@ -56,6 +56,16 @@ final class AppPreferencesTests: XCTestCase {
         preferences.setAppLanguage("russian")
         preferences.setCompactMenuBarEnabled(false)
         preferences.setWorkspacePath("/tmp/project")
+        let automationRules = ProtectionAutomationRules(
+            trigger: .activeTasks,
+            requiresExternalPower: true,
+            automaticallyStopsAfterTasks: true,
+            schedule: .init(isEnabled: true, startMinute: 60, endMinute: 120, weekdays: [.monday]),
+            selectedProjectPaths: ["/tmp/project"]
+        )
+        preferences.setAutomationRules(automationRules)
+        preferences.setProtectionProfileID(.nightTask)
+        preferences.setAutomationSchemaVersion(2)
 
         // Assert
         XCTAssertFalse(preferences.autoKeepAwake)
@@ -69,6 +79,9 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.appLanguage, "russian")
         XCTAssertFalse(preferences.compactMenuBarEnabled)
         XCTAssertEqual(preferences.workspacePath, "/tmp/project")
+        XCTAssertEqual(preferences.automationRules, automationRules)
+        XCTAssertEqual(preferences.protectionProfileID, .nightTask)
+        XCTAssertEqual(preferences.automationSchemaVersion, 2)
     }
 
     func testRemovingWorkspaceDoesNotChangeOtherPreferences() {

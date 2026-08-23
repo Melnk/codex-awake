@@ -36,7 +36,7 @@ You need:
    open dist/CodexAwake.app
    ```
 
-3. The dashboard opens automatically. On the first 1.9 launch, a three-step guide explains privacy, the three power modes, and the recommended defaults. While CodexAwake is running, its icon stays in the Dock and macOS shows the normal running-app indicator below it. If you close the dashboard, click the Dock icon or the **bolt icon** in the macOS menu bar and select **Open Cockpit…**.
+3. The dashboard opens automatically. On the first launch, a three-step guide explains privacy, the three power modes, and the recommended defaults. While CodexAwake is running, its icon stays in the Dock and macOS shows the normal running-app indicator below it. If you close the dashboard, click the Dock icon or the **bolt icon** in the macOS menu bar and select **Open Cockpit…**.
 
 4. Choose a project folder in **Chat with Codex**. The main protection switch is enabled by default and starts protecting the Mac when Codex is open or a tracked task is active.
 
@@ -85,7 +85,7 @@ If macOS blocks the first launch, right-click **CodexAwake.app**, choose **Open*
    open dist/CodexAwake.app
    ```
 
-3. Главное окно откроется автоматически. При первом запуске версии 1.9 появится короткий гид из трёх шагов: приватность, три режима питания и рекомендуемые настройки. Пока CodexAwake запущен, его иконка остаётся в Dock, а macOS показывает под ней стандартную точку работающего приложения. Если вы закрыли окно, нажмите на иконку в Dock или на **иконку молнии** в строке меню macOS и выберите **Open Cockpit…**.
+3. Главное окно откроется автоматически. При первом запуске появится короткий гид из трёх шагов: приватность, три режима питания и рекомендуемые настройки. Пока CodexAwake запущен, его иконка остаётся в Dock, а macOS показывает под ней стандартную точку работающего приложения. Если вы закрыли окно, нажмите на иконку в Dock или на **иконку молнии** в строке меню macOS и выберите **Open Cockpit…**.
 
 4. В блоке **Chat with Codex** выберите папку проекта. Основная защита включена по умолчанию и не даёт Mac уснуть, когда открыт Codex или выполняется отслеживаемая задача.
 
@@ -139,8 +139,19 @@ Open **Open Cockpit…** from the menu bar. The native SwiftUI dashboard uses a 
 - a compact composer that grows automatically from one to seven lines;
 - **New chat**, **Stop**, **Retry**, Enter-to-send, Shift-Enter newline, and queue controls;
 - approval cards for shell commands, network access, file changes, and additional permissions.
+- 2.0 automation profiles, schedules, charger/project rules, auto-stop, statistics, Shortcuts, AppleScript, hotkeys, a WidgetKit status widget, and a secret-free diagnostic export.
 
 The cockpit uses the authenticated [Codex App Server](https://learn.chatgpt.com/docs/app-server), not a separately stored API key. Select a project folder before starting a task. Codex is given workspace-write access to that folder and uses the installed runtime's `on-request` approval policy; approval prompts remain visible while the task is active.
+
+### Version 2.0 / Версия 2.0
+
+**English.** Version 2.0 adds a deterministic automation engine. Protection can follow the Codex Desktop process or active tasks, require external power, run on a weekday/time schedule, and react only to selected project folders. **Work**, **Night Task**, **Closed Lid**, and **Presentation** profiles apply a complete rule and power-mode configuration; finishing the final task can release every assertion automatically. `Command-Option-A` toggles protection and `Command-Option-1…4` applies profiles. The same actions are exposed to Apple Shortcuts and through the bundled `CodexAwake.applescript`. A WidgetKit widget and Menu Bar show privacy-safe current state, while protected time, sleep-prevention sessions, and a sanitized diagnostic export make behavior auditable without including chat text, tokens, or file contents.
+
+The **Closed Lid** profile does not require a charger by default. The separate **Only on external power** rule remains available when battery protection is preferred. Closed-lid operation begins only when a tracked task passes every enabled automation rule and the UI says **Active — you can close the lid**. The built-in display is physically unavailable while closed; the feature keeps background work running rather than illuminating that display.
+
+**Русский.** Версия 2.0 добавляет предсказуемый движок автоматизации. Защита может следовать за процессом Codex Desktop или активными задачами, требовать зарядку, работать по дням и времени и реагировать только на выбранные проекты. Профили **«Работа»**, **«Ночная задача»**, **«Закрытая крышка»** и **«Презентация»** применяют полный набор правил и режимов питания; после завершения последней задачи все блокировки могут сниматься автоматически. `Command-Option-A` переключает защиту, а `Command-Option-1…4` применяет профили. Те же действия доступны в Apple «Команды» и через вложенный `CodexAwake.applescript`. Виджет WidgetKit и Menu Bar показывают безопасное текущее состояние, а статистика защищённого времени, число сессий и очищенный диагностический отчёт помогают проверить работу без текста чатов, токенов и содержимого файлов.
+
+Профиль **«Закрытая крышка»** по умолчанию не требует зарядку. Отдельное правило **«Только от зарядки»** можно включить, если защита на аккумуляторе не нужна. Режим крышки запускается только тогда, когда активная отслеживаемая задача проходит все включённые правила и UI показывает **«Активен — крышку можно закрыть»**. Встроенный экран физически недоступен с закрытой крышкой: приложение продолжает фоновую работу, а не подсвечивает закрытый дисплей.
 
 ### Version 1.9 / Версия 1.9
 

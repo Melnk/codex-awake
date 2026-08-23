@@ -238,6 +238,16 @@ final class ActivityAndPowerTests: XCTestCase {
         XCTAssertFalse(held)
     }
 
+    func testAutomationDemandAcquiresWithoutLegacyActivity() async {
+        let power = MockPowerAssertionController()
+        let coordinator = AwakeCoordinator(power: power, keepAwakeForCodexDesktop: false)
+
+        await coordinator.setAutomationDemand(true)
+
+        let held = await power.assertionIsHeld()
+        XCTAssertTrue(held)
+    }
+
     func testCodexDesktopPresenceAcquiresAssertionWithoutManagedTask() async {
         let power = MockPowerAssertionController()
         let coordinator = AwakeCoordinator(power: power)
