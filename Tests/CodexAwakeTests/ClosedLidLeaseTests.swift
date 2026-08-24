@@ -1,5 +1,6 @@
 import CodexAwakeCore
 import Foundation
+import ServiceManagement
 import XCTest
 
 final class ClosedLidLeaseTests: XCTestCase {
@@ -155,6 +156,24 @@ final class ClosedLidLeaseTests: XCTestCase {
 
         snapshot.leaseActive = true
         XCTAssertEqual(snapshot.connectionState, .active)
+    }
+
+    func testMissingRegistrationRecordIsSetupRequiredWhenBundleContainsService() {
+        let state = ClosedLidHelperServiceManager.state(
+            for: .notFound,
+            bundledServiceIsPresent: true
+        )
+
+        XCTAssertEqual(state, .notRegistered)
+    }
+
+    func testMissingBundleFilesRemainUnavailable() {
+        let state = ClosedLidHelperServiceManager.state(
+            for: .notFound,
+            bundledServiceIsPresent: false
+        )
+
+        XCTAssertEqual(state, .unavailable)
     }
 }
 

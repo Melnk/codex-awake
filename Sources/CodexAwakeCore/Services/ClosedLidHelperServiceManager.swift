@@ -29,11 +29,25 @@ public struct ClosedLidHelperServiceManager: Sendable {
     }
 
     public static var state: ClosedLidHelperServiceState {
-        switch service.status {
+        state(
+            for: service.status,
+            bundledServiceIsPresent: bundledServiceIsPresent
+        )
+    }
+
+    public static func state(
+        for systemStatus: SMAppService.Status,
+        bundledServiceIsPresent: Bool
+    ) -> ClosedLidHelperServiceState {
+        switch systemStatus {
         case .notRegistered: .notRegistered
         case .enabled: .enabled
         case .requiresApproval: .requiresApproval
-        case .notFound: .unavailable
+        case .notFound:
+            // Before the first daemon registration, BackgroundTaskManagement
+            // can report "record not found" even though both bundle files are
+            // present. Only treat it as a broken build after verifying disk.
+            bundledServiceIsPresent ? .notRegistered : .unavailable
         @unknown default: .unavailable
         }
     }
@@ -66,5 +80,19 @@ public struct ClosedLidHelperServiceManager: Sendable {
 
     private static var service: SMAppService {
         .daemon(plistName: ClosedLidHelperConstants.bundledPlistName)
+    }
+
+    private static var bundledServiceIsPresent: Bool {
+        let applicationURL = Bundle.main.bundleURL
+        let plistURL =
+            applicationURL
+            .appendingPathComponent("Contents/Library/LaunchDaemons", isDirectory: true)
+            .appendingPathComponent(ClosedLidHelperConstants.bundledPlistName)
+        let executableURL =
+            applicationURL
+            .appendingPathComponent("Contents/Library/PrivilegedHelperTools", isDirectory: true)
+            .appendingPathComponent(ClosedLidHelperConstants.label)
+        return FileManager.default.fileExists(atPath: plistURL.path)
+            && FileManager.default.isExecutableFile(atPath: executableURL.path)
     }
 }
