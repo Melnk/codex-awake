@@ -4,9 +4,15 @@ import SwiftUI
 struct CodexChatView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var chat: CodexChatSession
     @State private var prompt = ""
     @State private var confirmsFullAccess = false
+    @State private var lastStreamingScrollAt = Date.distantPast
     @FocusState private var promptFocused: Bool
+
+    init(chat: CodexChatSession) {
+        self.chat = chat
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,9 +22,9 @@ struct CodexChatView: View {
             VSplitView {
                 timeline
                     .frame(minHeight: 220)
-                if !model.chatTools.isEmpty {
+                if !chat.tools.isEmpty {
                     ChatActivityView(
-                        activities: model.chatTools,
+                        activities: chat.tools,
                         language: model.appLanguage
                     )
                     .frame(minHeight: 92, idealHeight: 132, maxHeight: 240)
@@ -75,9 +81,9 @@ struct CodexChatView: View {
                         : t("OFFLINE", "НЕ В СЕТИ"),
                     color: serverAccent
                 )
-                if model.chatQueuedCount > 0 {
+                if chat.queuedCount > 0 {
                     ChatStatusPill(
-                        text: t("QUEUE \(model.chatQueuedCount)", "ОЧЕРЕДЬ \(model.chatQueuedCount)"),
+                        text: t("QUEUE \(chat.queuedCount)", "ОЧЕРЕДЬ \(chat.queuedCount)"),
                         color: CockpitPalette.amber
                     )
                 }
@@ -96,22 +102,22 @@ struct CodexChatView: View {
     private var chatActions: some View {
         HStack(spacing: 10) {
             Menu {
-                if model.chatConversations.isEmpty {
+                if chat.conversations.isEmpty {
                     Text(t("No saved chats", "Нет сохранённых чатов"))
                 } else {
-                    ForEach(model.chatConversations.sorted(by: { $0.updatedAt > $1.updatedAt })) { conversation in
+                    ForEach(chat.conversations.sorted(by: { $0.updatedAt > $1.updatedAt })) { conversation in
                         Button {
                             model.continueChat(conversation.id)
                             promptFocused = true
                         } label: {
                             Label(
                                 conversation.title,
-                                systemImage: conversation.id == model.activeChatConversationID
+                                systemImage: conversation.id == chat.activeConversationID
                                     ? "checkmark.circle.fill"
                                     : "bubble.left"
                             )
                         }
-                        .disabled(model.chatIsSending)
+                        .disabled(chat.isSending)
                     }
                 }
             } label: {
@@ -146,12 +152,12 @@ struct CodexChatView: View {
                 Picker(
                     t("Model", "Модель"),
                     selection: Binding(
-                        get: { model.chatSelectedModelID ?? "" },
+                        get: { chat.selectedModelID ?? "" },
                         set: { model.setChatModel($0.isEmpty ? nil : $0) }
                     )
                 ) {
                     Text(t("Automatic", "Автоматически")).tag("")
-                    ForEach(model.chatModelOptions) { option in
+                    ForEach(chat.modelOptions) { option in
                         Text(option.displayName).tag(option.model)
                     }
                 }
@@ -163,12 +169,12 @@ struct CodexChatView: View {
                 Picker(
                     t("Reasoning", "Рассуждение"),
                     selection: Binding(
-                        get: { model.chatSelectedReasoningEffort ?? "" },
+                        get: { chat.selectedReasoningEffort ?? "" },
                         set: { model.setChatReasoningEffort($0.isEmpty ? nil : $0) }
                     )
                 ) {
                     Text(t("Model default", "По умолчанию модели")).tag("")
-                    ForEach(model.chatReasoningOptions, id: \.id) { option in
+                    ForEach(chat.reasoningOptions, id: \.id) { option in
                         Text(reasoningTitle(option.id)).tag(option.id)
                     }
                 }
@@ -186,15 +192,15 @@ struct CodexChatView: View {
                     } label: {
                         Label(
                             permissionTitle(.fullAccess),
-                            systemImage: model.chatPermissionMode == .fullAccess ? "checkmark" : "lock.open"
+                            systemImage: chat.permissionMode == .fullAccess ? "checkmark" : "lock.open"
                         )
                     }
                 } label: {
-                    Label(permissionTitle(model.chatPermissionMode), systemImage: permissionIcon)
+                    Label(permissionTitle(chat.permissionMode), systemImage: permissionIcon)
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
-                .help(permissionDescription(model.chatPermissionMode))
+                .help(permissionDescription(chat.permissionMode))
 
                 Spacer(minLength: 0)
             }
@@ -203,28 +209,29 @@ struct CodexChatView: View {
         .scrollIndicators(.hidden)
         .font(.system(size: 10, weight: .medium))
         .padding(.bottom, 10)
-        .disabled(model.chatIsSending)
+        .disabled(chat.isSending)
     }
 
     private var timeline: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 15) {
-                    if model.chatMessages.isEmpty {
+                    if chat.messages.isEmpty {
                         emptyState
                     } else {
-                        ForEach(model.chatMessages) { message in
+                        ForEach(chat.messages) { message in
                             ReliableChatMessageRow(
                                 message: message,
                                 language: model.appLanguage,
                                 retry: { model.retryMessage(message.id) }
                             )
+                            .equatable()
                             .id(message.id)
                         }
                     }
 
-                    if model.chatIsSending,
-                        !model.chatMessages.contains(where: { $0.isStreaming })
+                    if chat.isSending,
+                        !chat.messages.contains(where: { $0.isStreaming })
                     {
                         ReliableThinkingIndicator(language: model.appLanguage)
                             .id("thinking")
@@ -235,9 +242,11 @@ struct CodexChatView: View {
             }
             .background(CockpitPalette.canvas.opacity(0.56), in: RoundedRectangle(cornerRadius: 20))
             .overlay(RoundedRectangle(cornerRadius: 20).stroke(CockpitPalette.separator.opacity(0.58)))
-            .onChange(of: model.chatMessages.count) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: model.chatMessages.last?.text) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: model.chatIsSending) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: chat.messages.count) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: chat.messages.last?.text) { _, _ in
+                scrollToBottom(proxy, animated: false, throttled: true)
+            }
+            .onChange(of: chat.isSending) { _, _ in scrollToBottom(proxy) }
         }
     }
 
@@ -299,7 +308,7 @@ struct CodexChatView: View {
                     return .handled
                 }
 
-                if model.chatIsSending {
+                if chat.isSending {
                     Button {
                         model.interruptChat()
                     } label: {
@@ -307,21 +316,21 @@ struct CodexChatView: View {
                             .frame(width: 38, height: 38)
                     }
                     .buttonStyle(CockpitDangerButtonStyle())
-                    .disabled(model.chatTurnID == nil)
+                    .disabled(chat.turnID == nil)
                     .help(t("Stop current task", "Остановить текущую задачу"))
                 }
 
                 Button {
                     submitPrompt()
                 } label: {
-                    Image(systemName: model.chatIsSending ? "tray.and.arrow.down.fill" : "arrow.up")
+                    Image(systemName: chat.isSending ? "tray.and.arrow.down.fill" : "arrow.up")
                         .font(.system(size: 15, weight: .semibold))
                         .frame(width: 38, height: 38)
                 }
                 .buttonStyle(CockpitPrimaryButtonStyle())
                 .disabled(!canSend)
                 .help(
-                    model.chatIsSending
+                    chat.isSending
                         ? t("Add message to queue", "Добавить сообщение в очередь")
                         : t("Send to Codex", "Отправить в Codex")
                 )
@@ -331,7 +340,7 @@ struct CodexChatView: View {
                 Image(systemName: statusIcon)
                 Text(composerStatus)
                 Spacer()
-                if let warning = model.chatPersistenceWarning {
+                if let warning = chat.persistenceWarning {
                     Label(warning, systemImage: "externaldrive.badge.exclamationmark")
                         .foregroundStyle(CockpitPalette.amber)
                 }
@@ -350,22 +359,32 @@ struct CodexChatView: View {
         } label: {
             Label(
                 permissionTitle(mode),
-                systemImage: model.chatPermissionMode == mode ? "checkmark" : "lock"
+                systemImage: chat.permissionMode == mode ? "checkmark" : "lock"
             )
         }
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        if model.chatIsSending,
-            !model.chatMessages.contains(where: { $0.isStreaming })
+    private func scrollToBottom(
+        _ proxy: ScrollViewProxy,
+        animated: Bool = true,
+        throttled: Bool = false
+    ) {
+        if throttled {
+            let now = Date()
+            guard now.timeIntervalSince(lastStreamingScrollAt) >= 0.08 else { return }
+            lastStreamingScrollAt = now
+        }
+
+        if chat.isSending,
+            !chat.messages.contains(where: { $0.isStreaming })
         {
-            if reduceMotion {
+            if reduceMotion || !animated {
                 proxy.scrollTo("thinking", anchor: .bottom)
             } else {
                 withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo("thinking", anchor: .bottom) }
             }
-        } else if let last = model.chatMessages.last {
-            if reduceMotion {
+        } else if let last = chat.messages.last {
+            if reduceMotion || !animated {
                 proxy.scrollTo(last.id, anchor: .bottom)
             } else {
                 withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -383,7 +402,7 @@ struct CodexChatView: View {
     }
 
     private var composerStatus: String {
-        if model.chatIsSending {
+        if chat.isSending {
             return t(
                 "Codex is busy · Enter adds the message to queue · Shift+Enter adds a line",
                 "Codex занят · Enter добавит сообщение в очередь · Shift+Enter добавит строку"
@@ -394,7 +413,7 @@ struct CodexChatView: View {
     }
 
     private var statusIcon: String {
-        if model.chatQueuedCount > 0 { return "tray.full" }
+        if chat.queuedCount > 0 { return "tray.full" }
         return model.chatUnavailableReason == nil ? "return" : "exclamationmark.circle"
     }
 
@@ -419,7 +438,7 @@ struct CodexChatView: View {
     }
 
     private var permissionIcon: String {
-        switch model.chatPermissionMode {
+        switch chat.permissionMode {
         case .readOnly: "eye"
         case .workspaceWrite: "folder.badge.gearshape"
         case .fullAccess: "lock.open"

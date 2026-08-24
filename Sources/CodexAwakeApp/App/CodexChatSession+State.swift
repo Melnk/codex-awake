@@ -84,16 +84,18 @@ extension CodexChatSession {
 
     func persistSoon() {
         persistenceTask?.cancel()
-        let archive = CodexChatArchive(
-            activeConversationID: activeConversationID,
-            conversations: conversations
-        )
-        persistenceTask = Task { [repository] in
+        persistenceTask = Task { [weak self, repository] in
             do {
                 try await Task.sleep(for: .milliseconds(200))
+                guard let self else { return }
+                let archive = CodexChatArchive(
+                    activeConversationID: self.activeConversationID,
+                    conversations: self.conversations
+                )
                 try await repository.save(archive)
             } catch is CancellationError {
             } catch {
+                guard let self else { return }
                 self.persistenceWarning = self.t(
                     "Chat history could not be saved.",
                     "Не удалось сохранить историю чата."

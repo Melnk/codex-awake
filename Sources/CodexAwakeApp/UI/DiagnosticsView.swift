@@ -3,6 +3,11 @@ import SwiftUI
 
 struct DiagnosticsView: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject private var diagnostics: DiagnosticsStore
+
+    init(diagnostics: DiagnosticsStore) {
+        self.diagnostics = diagnostics
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -17,7 +22,7 @@ struct DiagnosticsView: View {
             .foregroundStyle(.secondary)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text(model.diagnostics.snapshot.sanitizedText)
+                    Text(diagnostics.snapshot.sanitizedText)
                         .font(.system(.body, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -26,11 +31,11 @@ struct DiagnosticsView: View {
 
                     Text(t("Recent operational events", "Последние события"))
                         .font(.headline)
-                    if model.diagnostics.events.isEmpty {
+                    if diagnostics.events.isEmpty {
                         Text(t("No events yet", "Событий пока нет"))
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(model.diagnostics.events.prefix(20)) { event in
+                        ForEach(diagnostics.events.prefix(20)) { event in
                             HStack(alignment: .top, spacing: 9) {
                                 Image(systemName: eventSymbol(event.level))
                                     .foregroundStyle(eventColor(event.level))

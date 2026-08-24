@@ -96,7 +96,7 @@ struct CodexAwakeApp: App {
         }
 
         Window("CodexAwake Diagnostics", id: "diagnostics") {
-            DiagnosticsView()
+            DiagnosticsView(diagnostics: model.diagnostics)
                 .environmentObject(model)
                 .preferredColorScheme(model.interfaceTheme.colorScheme)
                 .environment(\.locale, model.appLanguage.locale)

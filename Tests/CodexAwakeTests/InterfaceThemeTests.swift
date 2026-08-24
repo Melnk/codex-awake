@@ -4,6 +4,8 @@ import XCTest
 
 @testable import CodexAwakeApp
 
+import Combine
+
 final class InterfaceThemeTests: XCTestCase {
     func testДоступныСистемнаяСветлаяИТёмнаяТемы() {
         // Arrange / Act
@@ -76,6 +78,28 @@ final class OnboardingRenderingTests: XCTestCase {
 
 @MainActor
 final class OnboardingStateTests: XCTestCase {
+    func testВложенныеХранилищаНеПерерисовываютВесьCockpit() throws {
+        // Arrange
+        let suiteName = "CodexAwakeChatIsolationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let model = AppModel(preferences: UserDefaultsAppPreferences(defaults: defaults))
+        var modelUpdateCount = 0
+        let observation = model.objectWillChange.sink { modelUpdateCount += 1 }
+
+        // Act
+        model.chat.createConversation(workspacePath: "/tmp")
+        model.chat.conversations[0].threadId = "thread-a"
+        model.chat.updateAgentMessage(threadId: "thread-a", itemId: "answer-a", delta: "Live response")
+        var diagnostics = DiagnosticsSnapshot()
+        diagnostics.appVersion = "performance-check"
+        model.diagnostics.snapshot = diagnostics
+
+        // Assert
+        XCTAssertEqual(modelUpdateCount, 0)
+        withExtendedLifetime(observation) {}
+    }
+
     func testОнбордингПоказываетсяОдинРазДляТекущейВерсии() throws {
         // Arrange
         let suiteName = "CodexAwakeOnboardingStateTests.\(UUID().uuidString)"

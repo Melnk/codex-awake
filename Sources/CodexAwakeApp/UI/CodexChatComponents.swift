@@ -1,7 +1,7 @@
 import CodexAwakeCore
 import SwiftUI
 
-struct ReliableChatMessageRow: View {
+struct ReliableChatMessageRow: View, Equatable {
     let message: CodexChatMessage
     let language: AppLanguage
     let retry: () -> Void
@@ -54,8 +54,16 @@ struct ReliableChatMessageRow: View {
         }
     }
 
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.message == rhs.message && lhs.language == rhs.language
+    }
+
     private var renderedText: AttributedString {
-        (try? AttributedString(markdown: message.text)) ?? AttributedString(message.text)
+        // Parsing Markdown for every streamed token becomes increasingly
+        // expensive as the response grows. Render the live tail as plain text
+        // and parse it once when Codex marks the message as complete.
+        guard !message.isStreaming else { return AttributedString(message.text) }
+        return (try? AttributedString(markdown: message.text)) ?? AttributedString(message.text)
     }
 
     private var roleLabel: String {

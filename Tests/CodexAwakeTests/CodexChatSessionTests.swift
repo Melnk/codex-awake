@@ -183,6 +183,26 @@ final class CodexChatSessionTests: XCTestCase {
         XCTAssertFalse(failure.displayText.contains("-1"))
     }
 
+    func testОтложенноеСохранениеБерётПоследнееПотоковоеСостояниеОдинРаз() async throws {
+        // Arrange
+        let repository = InMemoryChatRepository()
+        let sut = CodexChatSession(language: .english, repository: repository)
+        await sut.restore(defaultWorkspacePath: "/tmp")
+        sut.conversations[0].threadId = "thread-a"
+
+        // Act
+        sut.updateAgentMessage(threadId: "thread-a", itemId: "answer-a", delta: "Fast ")
+        sut.updateAgentMessage(threadId: "thread-a", itemId: "answer-a", delta: "stream")
+        sut.updateAgentMessage(threadId: "thread-a", itemId: "answer-a", delta: " output")
+        try await Task.sleep(for: .milliseconds(260))
+
+        // Assert
+        let archive = await repository.archive
+        let saveCount = await repository.saveCount
+        XCTAssertEqual(archive.conversations.first?.messages.last?.text, "Fast stream output")
+        XCTAssertEqual(saveCount, 1)
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(1),
         condition: @escaping @MainActor () async -> Bool
@@ -199,9 +219,13 @@ final class CodexChatSessionTests: XCTestCase {
 
 private actor InMemoryChatRepository: CodexChatPersisting {
     var archive = CodexChatArchive()
+    var saveCount = 0
 
     func load() -> CodexChatArchive { archive }
-    func save(_ archive: CodexChatArchive) { self.archive = archive }
+    func save(_ archive: CodexChatArchive) {
+        self.archive = archive
+        saveCount += 1
+    }
 }
 
 private actor RecordingChatClient: CodexChatClient {

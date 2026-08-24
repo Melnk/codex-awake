@@ -57,11 +57,8 @@ struct CockpitView: View {
                     }
                 }
 
-                if model.firstRunAcknowledged, let approval = model.approvalRequests.first {
-                    ApprovalOverlay(request: approval)
-                        .environmentObject(model)
-                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                }
+                ChatApprovalOverlayHost(chat: model.chat)
+                    .environmentObject(model)
 
                 if !model.firstRunAcknowledged {
                     OnboardingView()
@@ -272,7 +269,7 @@ struct CockpitView: View {
 
     private var controlDeck: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 powerControl
                 AutomationView()
                 powerModesControl
@@ -570,7 +567,7 @@ struct CockpitView: View {
     }
 
     private var chatDeck: some View {
-        CodexChatView()
+        CodexChatView(chat: model.chat)
     }
 
     private var codexDesktopPresenceDescription: String {
@@ -910,6 +907,20 @@ private struct ApprovalOverlay: View {
     }
 }
 
+private struct ChatApprovalOverlayHost: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var chat: CodexChatSession
+
+    @ViewBuilder
+    var body: some View {
+        if model.firstRunAcknowledged, let approval = chat.approvalRequests.first {
+            ApprovalOverlay(request: approval)
+                .environmentObject(model)
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+        }
+    }
+}
+
 private struct InstrumentCard: View {
     let label: String
     let value: String
@@ -1070,14 +1081,26 @@ private struct AmbientBlob: View {
                 .fill(.white.opacity(0.16))
                 .rotationEffect(.degrees(-18))
             Circle()
-                .fill(CockpitPalette.violetSoft.opacity(0.80))
-                .frame(width: 82, height: 82)
-                .blur(radius: 13)
+                .fill(
+                    RadialGradient(
+                        colors: [CockpitPalette.violetSoft.opacity(0.86), CockpitPalette.violetSoft.opacity(0)],
+                        center: .center,
+                        startRadius: 4,
+                        endRadius: 44
+                    )
+                )
+                .frame(width: 96, height: 96)
                 .offset(x: -22, y: -15)
             Circle()
-                .fill(CockpitPalette.blueSoft.opacity(0.72))
-                .frame(width: 74, height: 74)
-                .blur(radius: 15)
+                .fill(
+                    RadialGradient(
+                        colors: [CockpitPalette.blueSoft.opacity(0.78), CockpitPalette.blueSoft.opacity(0)],
+                        center: .center,
+                        startRadius: 3,
+                        endRadius: 42
+                    )
+                )
+                .frame(width: 92, height: 92)
                 .offset(x: 23, y: 19)
             Ellipse()
                 .stroke(.white.opacity(0.28), lineWidth: 1)
@@ -1098,9 +1121,15 @@ struct CockpitBackground: View {
                 endPoint: .bottomTrailing
             )
             Circle()
-                .fill(CockpitPalette.violetSoft.opacity(0.08))
+                .fill(
+                    RadialGradient(
+                        colors: [CockpitPalette.violetSoft.opacity(0.10), CockpitPalette.violetSoft.opacity(0)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 250
+                    )
+                )
                 .frame(width: 500, height: 500)
-                .blur(radius: 90)
                 .offset(x: 380, y: -260)
         }
         .ignoresSafeArea()

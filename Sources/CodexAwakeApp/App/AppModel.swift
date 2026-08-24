@@ -68,8 +68,6 @@ final class AppModel: ObservableObject {
     private var connectionLoopTask: Task<Void, Never>?
     private var closedLidStatusTask: Task<Void, Never>?
     private var automationStatusTask: Task<Void, Never>?
-    private var chatObservation: AnyCancellable?
-    private var diagnosticsObservation: AnyCancellable?
     private var isShuttingDown = false
     private var lastEventAt: Date?
     private var lastReconciliationAt: Date?
@@ -144,12 +142,6 @@ final class AppModel: ObservableObject {
         )
         launchAtLogin = launchManager.isEnabled
         launchAtLoginState = launchManager.state
-        chatObservation = chat.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
-        }
-        diagnosticsObservation = diagnostics.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
-        }
         AutomationCommandCenter.shared.model = self
     }
 
@@ -1292,6 +1284,7 @@ final class AppModel: ObservableObject {
         _ snapshot: CodexTaskSnapshot,
         notifyTransitions: Bool = true
     ) {
+        guard snapshot != taskSnapshot else { return }
         let previous = Dictionary(uniqueKeysWithValues: taskSnapshot.all.map { ($0.id, $0) })
         taskSnapshot = snapshot
         NSApplication.shared.dockTile.badgeLabel = snapshot.activeCount > 0 ? "\(snapshot.activeCount)" : nil
