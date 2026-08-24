@@ -1,10 +1,13 @@
 import Foundation
 
 public enum ClosedLidHelperConstants {
-    public static let label = "com.melnikoleg.CodexAwake.ClosedLidHelper"
+    public static let label = "com.melnikoleg.CodexAwake.ClosedLidService"
     public static let machServiceName = label
-    public static let installedExecutablePath = "/Library/PrivilegedHelperTools/\(label)"
-    public static let installedPlistPath = "/Library/LaunchDaemons/\(label).plist"
+    public static let bundledPlistName = "\(label).plist"
+    public static let legacyLabel = "com.melnikoleg.CodexAwake.ClosedLidHelper"
+    public static let legacyMachServiceName = legacyLabel
+    public static let legacyInstalledExecutablePath = "/Library/PrivilegedHelperTools/\(legacyLabel)"
+    public static let legacyInstalledPlistPath = "/Library/LaunchDaemons/\(legacyLabel).plist"
     public static let leaseDuration: TimeInterval = 120
     public static let renewalInterval: Duration = .seconds(30)
 }

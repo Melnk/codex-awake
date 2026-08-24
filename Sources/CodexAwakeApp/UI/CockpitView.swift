@@ -528,7 +528,7 @@ struct CockpitView: View {
             .accessibilityHint(closedLidStatusText)
 
             if !model.closedLidProtection.helperInstalled {
-                Button(t("One-time helper setup…", "Однократная настройка helper…")) {
+                Button(t("Set up with Touch ID…", "Настроить через Touch ID…")) {
                     model.installClosedLidHelper()
                 }
                 .buttonStyle(CockpitSecondaryButtonStyle())
@@ -541,7 +541,7 @@ struct CockpitView: View {
                     }
                     .buttonStyle(CockpitSecondaryButtonStyle())
 
-                    Button(t("Repair / Update…", "Восстановить / обновить…")) {
+                    Button(t("Repair service…", "Восстановить службу…")) {
                         model.installClosedLidHelper()
                     }
                     .buttonStyle(CockpitSecondaryButtonStyle())
@@ -553,8 +553,8 @@ struct CockpitView: View {
             Text(
                 model.closedLidActionMessage
                     ?? t(
-                        "Requires administrator approval once. Restores normal sleep when its lease expires.",
-                        "Требует однократного подтверждения администратора. После окончания аренды обычный сон восстановится."
+                        "Touch ID confirms setup; macOS controls the protected background service. Normal sleep returns when its lease expires.",
+                        "Touch ID подтверждает настройку, а macOS управляет защищённой фоновой службой. После окончания аренды обычный сон восстановится."
                     )
             )
             .font(.system(size: 9))

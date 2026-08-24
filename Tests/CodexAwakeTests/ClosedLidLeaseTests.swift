@@ -77,16 +77,6 @@ final class ClosedLidLeaseTests: XCTestCase {
         XCTAssertEqual(attemptsAfterDeadline, 2)
     }
 
-    func testCommandUsesSudoWithSafelyQuotedPath() {
-        let command = ClosedLidHelperCommandBuilder.commandContents(
-            scriptPath: "/Applications/Codex Awake's.app/install.sh",
-            title: "Install Closed-Lid"
-        )
-
-        XCTAssertTrue(command.contains("/usr/bin/sudo '/Applications/Codex Awake'\\''s.app/install.sh'"))
-        XCTAssertFalse(command.contains("sudo sh -c"))
-    }
-
     func testClosedLidClientAuthorizationAcceptsExactCodeHash() throws {
         let hash = String(repeating: "a", count: 40)
 
@@ -113,6 +103,41 @@ final class ClosedLidLeaseTests: XCTestCase {
                 arguments: ["helper", "--client-team-id", "bad requirement"]
             )
         )
+    }
+
+    func testBundledHelperResolvesContainingApplication() throws {
+        let application = try ClosedLidClientAuthorization.containingApplicationURL(
+            forBundledHelperAt:
+                "/Applications/CodexAwake.app/Contents/Library/PrivilegedHelperTools/com.melnikoleg.CodexAwake.ClosedLidService"
+        )
+
+        XCTAssertEqual(application.path, "/Applications/CodexAwake.app")
+    }
+
+    func testBundledHelperRejectsUnexpectedLocation() {
+        XCTAssertThrowsError(
+            try ClosedLidClientAuthorization.containingApplicationURL(
+                forBundledHelperAt: "/private/tmp/com.melnikoleg.CodexAwake.ClosedLidService"
+            )
+        )
+    }
+
+    func testBuiltBundledHelperDerivesAuthorizedAppRequirementWhenAvailable() throws {
+        let helperPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(
+                "dist/CodexAwake.app/Contents/Library/PrivilegedHelperTools/"
+                    + ClosedLidHelperConstants.label
+            ).path
+        guard FileManager.default.isExecutableFile(atPath: helperPath) else {
+            throw XCTSkip("Release app bundle is built after the unit-test phase in a clean checkout")
+        }
+
+        let requirement = try ClosedLidClientAuthorization.codeSigningRequirement(
+            arguments: [helperPath]
+        )
+
+        XCTAssertTrue(requirement.hasPrefix("cdhash H\"") || requirement.contains("anchor apple generic"))
+        XCTAssertTrue(requirement.contains("com.melnikoleg.CodexAwake") || requirement.contains("cdhash"))
     }
 
     func testClosedLidConnectionStateIsUserFacingAndDeterministic() {

@@ -188,10 +188,10 @@ struct OnboardingView: View {
             icon: "lock.open.display",
             title: t("Closed-lid mode", "Работа с закрытой крышкой"),
             detail: t(
-                "An optional narrow helper keeps the whole Mac awake with the lid closed and restores normal sleep afterward.",
-                "Опциональный helper поддерживает работу всего Mac с закрытой крышкой и затем возвращает обычный сон."
+                "A narrow bundled service keeps the whole Mac awake with the lid closed and restores normal sleep afterward.",
+                "Узкая встроенная служба поддерживает работу всего Mac с закрытой крышкой и затем возвращает обычный сон."
             ),
-            badge: t("One-time admin approval", "Одно подтверждение администратора")
+            badge: t("Touch ID setup", "Настройка через Touch ID")
         )
     }
 

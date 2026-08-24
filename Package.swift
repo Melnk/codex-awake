@@ -20,6 +20,7 @@ let package = Package(
             path: "Sources/CodexAwakeCore",
             linkerSettings: [
                 .linkedFramework("IOKit"),
+                .linkedFramework("Security"),
                 .linkedFramework("ServiceManagement"),
             ]
         ),
@@ -35,6 +36,9 @@ let package = Package(
                         "-Xfrontend", "Resources/AppIntentsConstProtocols.json",
                     ]
                 )
+            ],
+            linkerSettings: [
+                .linkedFramework("LocalAuthentication")
             ]
         ),
         .executableTarget(

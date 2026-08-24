@@ -17,23 +17,22 @@ swift build --disable-sandbox --configuration "$CONFIGURATION" --product CodexAw
 BIN_DIR="$(swift build --disable-sandbox --configuration "$CONFIGURATION" --show-bin-path)"
 APP="$PROJECT_ROOT/dist/CodexAwake.app"
 WIDGET="$APP/Contents/PlugIns/CodexAwakeWidget.appex"
-HELPER_LABEL="com.melnikoleg.CodexAwake.ClosedLidHelper"
+HELPER_LABEL="com.melnikoleg.CodexAwake.ClosedLidService"
 SIGNING_IDENTITY="${CODESIGN_IDENTITY:--}"
 
 if [[ -e "$APP" ]]; then
     rm -rf "$APP"
 fi
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/PrivilegedHelperTools"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" \
+    "$APP/Contents/Library/PrivilegedHelperTools" "$APP/Contents/Library/LaunchDaemons"
 mkdir -p "$WIDGET/Contents/MacOS"
 install -m 0755 "$BIN_DIR/CodexAwake" "$APP/Contents/MacOS/CodexAwake"
 install -m 0755 "$BIN_DIR/CodexAwakeClosedLidHelper" "$APP/Contents/Library/PrivilegedHelperTools/$HELPER_LABEL"
+install -m 0644 "$PROJECT_ROOT/Resources/$HELPER_LABEL.plist" "$APP/Contents/Library/LaunchDaemons/$HELPER_LABEL.plist"
 install -m 0755 "$BIN_DIR/CodexAwakeWidget" "$WIDGET/Contents/MacOS/CodexAwakeWidget"
 install -m 0644 "$PROJECT_ROOT/Resources/CodexAwakeWidget-Info.plist" "$WIDGET/Contents/Info.plist"
 install -m 0644 "$PROJECT_ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 install -m 0644 "$PROJECT_ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-install -m 0644 "$PROJECT_ROOT/Resources/$HELPER_LABEL.plist" "$APP/Contents/Resources/$HELPER_LABEL.plist"
-install -m 0755 "$PROJECT_ROOT/Resources/install-closed-lid-helper.sh" "$APP/Contents/Resources/install-closed-lid-helper.sh"
-install -m 0755 "$PROJECT_ROOT/Resources/uninstall-closed-lid-helper.sh" "$APP/Contents/Resources/uninstall-closed-lid-helper.sh"
 install -m 0644 "$PROJECT_ROOT/Resources/CodexAwake.applescript" "$APP/Contents/Resources/CodexAwake.applescript"
 
 CONST_VALUES="$BIN_DIR/CodexAwakeApp.build/CodexAwakeApp.swiftconstvalues"

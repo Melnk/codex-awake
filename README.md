@@ -44,9 +44,9 @@ You need:
 
    Use the **EN / RU** switch in the top-right corner to change the application language. Choose **System**, **Light**, or **Dark** appearance next to it. Both choices are saved for the next launch.
 
-5. Optional: to keep the Mac running with the lid closed, click **One-time helper setup…**, approve the administrator prompt, and enable **Closed-lid mode**. Close the lid only after the status says **Active — you can close the lid**.
+5. Optional: move CodexAwake to **Applications**, click **Set Up Closed-Lid with Touch ID…**, and enable **Closed-lid mode**. Touch ID confirms your request; if macOS opens **System Settings → General → Login Items**, allow the CodexAwake background service there. Close the lid only after the status says **Active — you can close the lid**.
 
-   The ordinary **Auto Keep Awake** switch never needs an administrator password. Closed-Lid asks only when its helper is installed or updated for a new locally built app version. Use **Retry** first if an already installed helper is temporarily unavailable; retrying does not request a password.
+   CodexAwake no longer opens Terminal or runs a `sudo` installer. The system registration is owned by macOS, and the app never receives or stores an administrator password. Touch ID is offered when it is available; macOS may still require one protected Background Items approval. Rebuilding the app does not require reinstalling a copied root binary.
 
 To keep the app in Applications, open the build folder and drag **CodexAwake.app** into **Applications**:
 
@@ -93,9 +93,9 @@ If macOS blocks the first launch, right-click **CodexAwake.app**, choose **Open*
 
    Переключатель **EN / RU** в правом верхнем углу меняет язык приложения. Рядом выбирается **Системная**, **Светлая** или **Тёмная** тема. Оба выбора сохраняются для следующих запусков.
 
-5. Необязательно: чтобы Mac продолжал работать с закрытой крышкой, нажмите **Однократная настройка helper…**, подтвердите запрос администратора и включите **Режим закрытой крышки**. Закрывайте крышку только после появления статуса **Active — you can close the lid**.
+5. Необязательно: перенесите CodexAwake в **Программы**, нажмите **Настроить Closed-Lid через Touch ID…** и включите **Режим закрытой крышки**. Touch ID подтверждает запрос; если macOS откроет **Системные настройки → Основные → Объекты входа**, разрешите там фоновую службу CodexAwake. Закрывайте крышку только после появления статуса **Active — you can close the lid**.
 
-   Обычный переключатель **Auto Keep Awake** никогда не требует пароль администратора. Пароль нужен только при установке Closed-Lid helper или его обновлении для новой локальной сборки приложения. Если установленный helper временно недоступен, сначала нажмите **Повторить** — это действие не запрашивает пароль.
+   CodexAwake больше не открывает Терминал и не запускает установщик через `sudo`. Системной регистрацией управляет сама macOS, а приложение не получает и не хранит пароль администратора. При наличии Touch ID используется он; macOS может дополнительно попросить один раз разрешить защищённую фоновую службу. После пересборки больше не нужно заново копировать root-helper.
 
 Чтобы перенести приложение в «Программы», откройте папку сборки и перетащите **CodexAwake.app** в **Applications**:
 
@@ -228,7 +228,7 @@ scripts/test.sh
 scripts/build_app.sh
 ```
 
-The release build is assembled as `dist/CodexAwake.app` and ad-hoc signed for local development. It includes the separately signed Closed-Lid helper plus narrow install/uninstall scripts. Copy it to `/Applications` if desired. A paid Apple Developer account is not required for local use, but installing the helper requires one administrator approval.
+The release build is assembled as `dist/CodexAwake.app` and ad-hoc signed for local development. It contains a separately signed Closed-Lid service and its `SMAppService` launch-daemon manifest inside the application bundle. Copy it to `/Applications` before enabling Closed-Lid. A paid Apple Developer account is not required for local use.
 
 To build a debug bundle:
 
@@ -244,7 +244,7 @@ CodexAwake uses the normal macOS Dock lifecycle (`LSUIElement=false`), so the Do
 
 1. cockpit tasks and sessions connected to its managed `--remote` endpoint are tracked individually;
 2. Codex Desktop process presence and top-level task lifecycle are detected, while chat contents remain private;
-3. idle sleep protection is unprivileged; Closed-Lid is a separate opt-in feature that requires an administrator-approved helper and automatically expires.
+3. idle sleep protection is unprivileged; Closed-Lid is a separate opt-in bundled service, registered by macOS after explicit user approval, whose lease automatically expires.
 
 CodexAwake first tries the runtime bundled inside an installed ChatGPT/Codex app. If no compatible runtime can be found, the menu shows `Codex: Not found` and App Server state `Failed`; open **Diagnostics… → Choose Codex Binary…** to select an executable.
 
@@ -307,16 +307,16 @@ The main protection switch overrides every source and releases both assertions i
 
 The display-sleep assertion still allows sleep when a MacBook lid is closed. Closed-Lid therefore uses a separate root helper instead of pretending that the ordinary assertion can do more than the platform promises.
 
-1. Build and launch CodexAwake 1.3 or later.
+1. Build CodexAwake and move `CodexAwake.app` to `/Applications`.
 2. In the cockpit, turn on **Closed-lid mode**.
-3. Click **Enable closed-lid mode** and complete the one-time administrator prompt.
+3. Click **Set up with Touch ID**. If macOS reports that approval is required, enable CodexAwake in **System Settings → General → Login Items** and return to the app.
 4. Wait until the cockpit says **Active — you can close the lid** before closing the display.
 
-The helper accepts only `status`, `acquire`, `renew`, and `release` over its fixed XPC interface. Developer ID builds authorize the app identifier plus Apple Team ID, so future builds signed by the same team reuse the helper without another password. Local ad-hoc builds have no trustworthy Team ID and remain pinned to the exact CDHash; rebuilding them therefore requires **Install / Update Helper** again. This fallback is intentional and prevents an unrelated ad-hoc app from impersonating CodexAwake.
+The service accepts only `status`, `acquire`, `renew`, and `release` over its fixed XPC interface. It is registered with `SMAppService` from `Contents/Library/LaunchDaemons`; no executable is copied by a shell script. At startup it validates the containing CodexAwake bundle. Developer ID builds authorize the exact app identifier plus Apple Team ID, while local ad-hoc builds authorize the current bundle CDHash. Because the service remains inside the app bundle, replacing a local build no longer requires another `sudo` installation.
 
 While ordinary sleep protection is required, CodexAwake acquires a 120-second lease and renews it every 30 seconds. Failed connections recover automatically with capped exponential backoff; **Retry** performs an immediate password-free status check. The root helper snapshots the prior `disablesleep` value, applies `pmset -a disablesleep 1`, persists only token expirations and the restoration value under `/var/db/com.melnikoleg.CodexAwake`, and restores the prior value after the final release, app shutdown, helper shutdown, or lease expiry. A client crash can therefore leave the setting changed for no more than the remaining bounded lease.
 
-Closed-Lid keeps the computer awake as a whole, not only Codex. Music, downloads, servers, and other processes can continue; the internal display is physically unavailable. Battery drain and heat will be higher, and macOS may still force sleep for low battery, thermal protection, shutdown, or other safety conditions. The feature defaults off. Use **Diagnostics → Remove Closed-Lid Helper** to restore normal behavior and remove the daemon.
+Closed-Lid keeps the computer awake as a whole, not only Codex. Music, downloads, servers, and other processes can continue; the internal display is physically unavailable. Battery drain and heat will be higher, and macOS may still force sleep for low battery, thermal protection, shutdown, or other safety conditions. The feature defaults off. Use **Diagnostics → Remove Closed-Lid Service** to restore normal behavior and unregister the daemon.
 
 ## Reconnect and fail-safe policy
 
@@ -442,10 +442,10 @@ The test suite wraps power management and the privileged helper client behind pr
 
 **Closed-Lid says Helper Required or Helper Needs Update**
 
-- Click **Install / Update Helper** and complete the administrator prompt in Terminal.
-- Reinstall after every ad-hoc rebuild because the authorized app CDHash changes.
+- Move CodexAwake to `/Applications`, then click **Set Up Closed-Lid with Touch ID**.
+- If System Settings opens, allow CodexAwake under **General → Login Items**, return to the app, and click **Retry**.
 - Do not close the lid until the cockpit explicitly says **LEASE ACTIVE · LID MAY CLOSE**.
-- Check the sanitized helper error in Diagnostics. If removal is needed, use **Remove Closed-Lid Helper** and complete its administrator prompt.
+- Check the sanitized service error in Diagnostics. If removal is needed, use **Remove Closed-Lid Service**; no Terminal command is created.
 
 ## Architecture and release workflow
 

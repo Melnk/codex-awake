@@ -42,13 +42,14 @@ public actor ClosedLidHelperClient: ClosedLidHelperCommunicating {
                 @escaping (Bool, TimeInterval, String?) -> Void
             ) -> Void
     ) async throws -> ClosedLidHelperStatus {
-        try await withCheckedThrowingContinuation { continuation in
+        let endpoint = preferredEndpoint
+        return try await withCheckedThrowingContinuation { continuation in
             let connection = NSXPCConnection(
-                machServiceName: ClosedLidHelperConstants.machServiceName,
+                machServiceName: endpoint.machServiceName,
                 options: .privileged
             )
             connection.remoteObjectInterface = NSXPCInterface(with: ClosedLidHelperXPCProtocol.self)
-            connection.setCodeSigningRequirement(#"identifier "com.melnikoleg.CodexAwake.ClosedLidHelper""#)
+            connection.setCodeSigningRequirement("identifier \"\(endpoint.helperIdentifier)\"")
 
             let gate = XPCReplyGate(continuation: continuation, connection: connection)
             gate.scheduleTimeout()
@@ -76,6 +77,32 @@ public actor ClosedLidHelperClient: ClosedLidHelperCommunicating {
             }
         }
     }
+
+    private var preferredEndpoint: HelperEndpoint {
+        if ClosedLidHelperServiceManager.state == .enabled {
+            return .modern
+        }
+        let legacyIsInstalled =
+            FileManager.default.isExecutableFile(
+                atPath: ClosedLidHelperConstants.legacyInstalledExecutablePath)
+            && FileManager.default.fileExists(
+                atPath: ClosedLidHelperConstants.legacyInstalledPlistPath)
+        return legacyIsInstalled ? .legacy : .modern
+    }
+}
+
+private struct HelperEndpoint: Sendable {
+    let machServiceName: String
+    let helperIdentifier: String
+
+    static let modern = HelperEndpoint(
+        machServiceName: ClosedLidHelperConstants.machServiceName,
+        helperIdentifier: ClosedLidHelperConstants.label
+    )
+    static let legacy = HelperEndpoint(
+        machServiceName: ClosedLidHelperConstants.legacyMachServiceName,
+        helperIdentifier: ClosedLidHelperConstants.legacyLabel
+    )
 }
 
 private final class XPCReplyGate: @unchecked Sendable {

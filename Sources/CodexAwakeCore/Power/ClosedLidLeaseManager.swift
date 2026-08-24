@@ -29,6 +29,7 @@ public actor ClosedLidLeaseManager {
     private let leaseDuration: TimeInterval
     private let renewalInterval: Duration
     private let now: @Sendable () -> Date
+    private let helperRegistrationCheck: @Sendable () -> Bool
     private let logger = Logger(subsystem: "com.melnikoleg.CodexAwake", category: "ClosedLidLease")
 
     private var requested = false
@@ -48,7 +49,10 @@ public actor ClosedLidLeaseManager {
         token: String = UUID().uuidString,
         leaseDuration: TimeInterval = ClosedLidHelperConstants.leaseDuration,
         renewalInterval: Duration = ClosedLidHelperConstants.renewalInterval,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        helperRegistrationCheck: @escaping @Sendable () -> Bool = {
+            ClosedLidHelperServiceManager.isRegistered
+        }
     ) {
         self.helper = helper
         self.sleeper = sleeper
@@ -57,6 +61,7 @@ public actor ClosedLidLeaseManager {
         self.leaseDuration = leaseDuration
         self.renewalInterval = renewalInterval
         self.now = now
+        self.helperRegistrationCheck = helperRegistrationCheck
     }
 
     public func setRequested(_ enabled: Bool, protectionIsActive: Bool) async throws {
@@ -107,7 +112,7 @@ public actor ClosedLidLeaseManager {
     public func snapshot() -> ClosedLidProtectionSnapshot {
         var value = ClosedLidProtectionSnapshot()
         value.requested = requested
-        value.helperInstalled = helperInstalled
+        value.helperInstalled = helperInstalled || helperReachable
         value.helperReachable = helperReachable
         value.leaseActive = leaseActive
         value.leaseExpiresAt = leaseExpiresAt
@@ -117,8 +122,11 @@ public actor ClosedLidLeaseManager {
     }
 
     private var helperInstalled: Bool {
-        fileManager.isExecutableFile(atPath: ClosedLidHelperConstants.installedExecutablePath)
-            && fileManager.fileExists(atPath: ClosedLidHelperConstants.installedPlistPath)
+        helperRegistrationCheck()
+            || (fileManager.isExecutableFile(
+                atPath: ClosedLidHelperConstants.legacyInstalledExecutablePath)
+                && fileManager.fileExists(
+                    atPath: ClosedLidHelperConstants.legacyInstalledPlistPath))
     }
 
     private func acquire() async throws {
