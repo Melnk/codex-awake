@@ -75,6 +75,7 @@ final class AppModel: ObservableObject {
     private var lastReconciliationAt: Date?
     private let startedAt = Date()
     private var didLoadTaskRegistry = false
+    private var didAttemptClosedLidRegistrationRefresh = false
 
     init(
         preferences: any AppPreferencesStoring = UserDefaultsAppPreferences(),
@@ -155,6 +156,9 @@ final class AppModel: ObservableObject {
             "CodexAwake \(AppBuildInfo.displayVersion) started.",
             "CodexAwake \(AppBuildInfo.displayVersion) запущен."
         )
+        if let issue = closedLidHelperService.registrationIssue {
+            closedLidActionMessage = localizedClosedLidSetupError(issue)
+        }
         desktopMonitor.start { [weak self] snapshot in
             self?.handleCodexDesktopSnapshot(snapshot)
         }
@@ -348,6 +352,15 @@ final class AppModel: ObservableObject {
 
     func installClosedLidHelper() {
         guard !closedLidHelperActionInProgress else { return }
+        if let issue = closedLidHelperService.registrationIssue {
+            closedLidActionMessage = localizedClosedLidSetupError(issue)
+            appendEvent(
+                .warning,
+                "Closed-Lid service setup is unavailable in this local ad-hoc build.",
+                "Настройка службы Closed-Lid недоступна в этой локальной ad-hoc сборке."
+            )
+            return
+        }
         closedLidHelperActionInProgress = true
         closedLidActionMessage = t(
             "Checking the bundled Closed-Lid service…",
@@ -359,9 +372,7 @@ final class AppModel: ObservableObject {
         )
 
         Task {
-            let status = await power.refreshClosedLidStatus(retryIfNeeded: false)
-            closedLidProtection = status
-            guard !status.helperReachable else {
+            guard !closedLidProtection.helperReachable else {
                 closedLidActionMessage = t(
                     "Closed-Lid service is already ready. No password is required.",
                     "Служба Closed-Lid уже готова. Пароль не требуется.")
@@ -382,7 +393,9 @@ final class AppModel: ObservableObject {
                         "Разрешить CodexAwake зарегистрировать службу закрытой крышки"
                     )
                 )
-                let serviceState = try closedLidHelperService.register()
+                let serviceState = try await closedLidHelperService.register(
+                    replacingExisting: closedLidHelperService.state == .enabled
+                )
 
                 if serviceState == .requiresApproval {
                     closedLidHelperService.openApprovalSettings()
@@ -425,11 +438,11 @@ final class AppModel: ObservableObject {
                 return
             }
 
-            for _ in 0..<10 {
-                do {
-                    try await Task.sleep(for: .seconds(2))
-                } catch {
-                    break
+            // A healthy launch daemon answers immediately. Keep setup bounded:
+            // two three-second XPC attempts plus one short retry delay.
+            for attempt in 0..<2 {
+                if attempt > 0 {
+                    do { try await Task.sleep(for: .milliseconds(500)) } catch { break }
                 }
                 let refreshed = await power.refreshClosedLidStatus(retryIfNeeded: false)
                 closedLidProtection = refreshed
@@ -587,6 +600,10 @@ final class AppModel: ObservableObject {
 
     var allowSleepWhenCodexIdle: Bool {
         !keepAwakeForCodexDesktop
+    }
+
+    var closedLidHelperSetupAvailable: Bool {
+        closedLidHelperService.registrationIssue == nil
     }
 
     func applyProtectionProfile(_ id: ProtectionProfileID) {
@@ -1237,7 +1254,33 @@ final class AppModel: ObservableObject {
         closedLidStatusTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let value = await power.refreshClosedLidStatus()
+                if closedLidHelperActionInProgress {
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                    continue
+                }
+                var value = await power.refreshClosedLidStatus()
+                let serviceState = closedLidHelperService.state
+                if value.helperInstalled, !value.helperReachable,
+                    !didAttemptClosedLidRegistrationRefresh,
+                    serviceState == .enabled || serviceState == .notRegistered
+                {
+                    didAttemptClosedLidRegistrationRefresh = true
+                    closedLidHelperActionInProgress = true
+                    closedLidActionMessage = t(
+                        "Refreshing the approved Closed-Lid service after the app update…",
+                        "Обновляем разрешённую службу Closed-Lid после обновления приложения…"
+                    )
+                    do {
+                        _ = try await closedLidHelperService.register(
+                            replacingExisting: serviceState == .enabled
+                        )
+                        try await Task.sleep(for: .milliseconds(500))
+                        value = await power.refreshClosedLidStatus(retryIfNeeded: false)
+                    } catch {
+                        closedLidActionMessage = localizedClosedLidSetupError(error)
+                    }
+                    closedLidHelperActionInProgress = false
+                }
                 if value != closedLidProtection {
                     let previous = closedLidProtection
                     closedLidProtection = value
@@ -1276,7 +1319,7 @@ final class AppModel: ObservableObject {
                     }
                     updateDiagnostics()
                 }
-                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
             }
         }
     }
@@ -1292,6 +1335,12 @@ final class AppModel: ObservableObject {
             return t(
                 "This build does not contain the protected Closed-Lid service. Reinstall CodexAwake.",
                 "В этой сборке нет защищённой службы Closed-Lid. Переустановите CodexAwake."
+            )
+        }
+        if case ClosedLidHelperServiceError.signedApplicationRequired = error {
+            return t(
+                "This local build has no Apple Developer signature. Touch ID cannot run its root Closed-Lid service. Install a Developer ID signed build; normal lid sleep remains active.",
+                "У этой локальной сборки нет подписи Apple Developer. Touch ID не может запустить её root-службу Closed-Lid. Установите сборку с подписью Developer ID; пока действует обычный сон при закрытии крышки."
             )
         }
         let message = SafeDisplay.sanitizedError(error)

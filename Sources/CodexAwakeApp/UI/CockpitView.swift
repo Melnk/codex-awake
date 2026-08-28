@@ -533,21 +533,26 @@ struct CockpitView: View {
                 }
                 .buttonStyle(CockpitSecondaryButtonStyle())
                 .font(.system(size: 10, weight: .semibold))
-                .disabled(model.closedLidHelperActionInProgress)
+                .disabled(
+                    model.closedLidHelperActionInProgress || !model.closedLidHelperSetupAvailable
+                )
             } else if !model.closedLidProtection.helperReachable {
                 HStack(spacing: 8) {
                     Button(t("Retry", "Повторить")) {
                         model.retryClosedLidHelperConnection()
                     }
                     .buttonStyle(CockpitSecondaryButtonStyle())
+                    .disabled(model.closedLidHelperActionInProgress)
 
                     Button(t("Repair service…", "Восстановить службу…")) {
                         model.installClosedLidHelper()
                     }
                     .buttonStyle(CockpitSecondaryButtonStyle())
+                    .disabled(
+                        model.closedLidHelperActionInProgress || !model.closedLidHelperSetupAvailable
+                    )
                 }
                 .font(.system(size: 10, weight: .semibold))
-                .disabled(model.closedLidHelperActionInProgress)
             }
 
             Text(

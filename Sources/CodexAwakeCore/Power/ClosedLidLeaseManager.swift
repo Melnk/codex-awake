@@ -24,7 +24,6 @@ public struct ClosedLidProtectionSnapshot: Equatable, Sendable {
 public actor ClosedLidLeaseManager {
     private let helper: any ClosedLidHelperCommunicating
     private let sleeper: any AsyncSleeping
-    private let fileManager: FileManager
     private let token: String
     private let leaseDuration: TimeInterval
     private let renewalInterval: Duration
@@ -45,7 +44,6 @@ public actor ClosedLidLeaseManager {
     public init(
         helper: any ClosedLidHelperCommunicating = ClosedLidHelperClient(),
         sleeper: any AsyncSleeping = SystemSleeper(),
-        fileManager: FileManager = .default,
         token: String = UUID().uuidString,
         leaseDuration: TimeInterval = ClosedLidHelperConstants.leaseDuration,
         renewalInterval: Duration = ClosedLidHelperConstants.renewalInterval,
@@ -56,7 +54,6 @@ public actor ClosedLidLeaseManager {
     ) {
         self.helper = helper
         self.sleeper = sleeper
-        self.fileManager = fileManager
         self.token = token
         self.leaseDuration = leaseDuration
         self.renewalInterval = renewalInterval
@@ -123,13 +120,15 @@ public actor ClosedLidLeaseManager {
 
     private var helperInstalled: Bool {
         helperRegistrationCheck()
-            || (fileManager.isExecutableFile(
-                atPath: ClosedLidHelperConstants.legacyInstalledExecutablePath)
-                && fileManager.fileExists(
-                    atPath: ClosedLidHelperConstants.legacyInstalledPlistPath))
+            || ClosedLidHelperServiceManager.legacyInstallationIsCompatible
     }
 
     private func acquire() async throws {
+        guard helperInstalled else {
+            throw ClosedLidHelperClientError.unavailable(
+                "no helper is registered for this application signature"
+            )
+        }
         let status = try await helper.acquire(token: token, duration: leaseDuration)
         helperReachable = true
         clearFailure()

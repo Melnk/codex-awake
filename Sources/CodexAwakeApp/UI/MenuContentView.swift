@@ -167,7 +167,7 @@ struct MenuContentView: View {
             Button(t("Set Up Closed-Lid with Touch ID…", "Настроить Closed-Lid через Touch ID…")) {
                 model.installClosedLidHelper()
             }
-            .disabled(model.closedLidHelperActionInProgress)
+            .disabled(model.closedLidHelperActionInProgress || !model.closedLidHelperSetupAvailable)
         } else if !model.closedLidProtection.helperReachable {
             Button(t("Retry Helper Connection", "Повторить подключение к helper")) {
                 model.retryClosedLidHelperConnection()
@@ -176,7 +176,7 @@ struct MenuContentView: View {
             Button(t("Repair Closed-Lid Service…", "Восстановить службу Closed-Lid…")) {
                 model.installClosedLidHelper()
             }
-            .disabled(model.closedLidHelperActionInProgress)
+            .disabled(model.closedLidHelperActionInProgress || !model.closedLidHelperSetupAvailable)
         } else {
             Button(t("Remove Closed-Lid Service…", "Удалить службу Closed-Lid…")) {
                 model.removeClosedLidHelper()

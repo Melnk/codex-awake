@@ -66,9 +66,11 @@ xcrun appintentsmetadataprocessor \
     --no-app-shortcuts-localization
 
 if [[ "$SIGNING_IDENTITY" == "-" ]]; then
-    codesign --force --sign - --timestamp=none --entitlements "$PROJECT_ROOT/Resources/CodexAwakeWidget.entitlements" "$WIDGET"
+    # App Groups require a real signing identity and provisioning profile.
+    # Applying them to an ad-hoc build creates a permanent cfprefsd/TCC retry loop.
+    codesign --force --sign - --timestamp=none "$WIDGET"
     codesign --force --sign - --timestamp=none --identifier "$HELPER_LABEL" "$APP/Contents/Library/PrivilegedHelperTools/$HELPER_LABEL"
-    codesign --force --sign - --timestamp=none --entitlements "$PROJECT_ROOT/Resources/CodexAwake.entitlements" "$APP"
+    codesign --force --sign - --timestamp=none "$APP"
 else
     codesign --force --sign "$SIGNING_IDENTITY" --options runtime --timestamp --entitlements "$PROJECT_ROOT/Resources/CodexAwakeWidget.entitlements" "$WIDGET"
     codesign --force --sign "$SIGNING_IDENTITY" --options runtime --timestamp --identifier "$HELPER_LABEL" "$APP/Contents/Library/PrivilegedHelperTools/$HELPER_LABEL"

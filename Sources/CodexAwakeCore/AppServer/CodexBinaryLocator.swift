@@ -41,7 +41,6 @@ public struct CodexBinaryLocator: CodexBinaryLocating, @unchecked Sendable {
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
             fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/codex").path,
-            fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".codex/bin/codex").path,
         ]
 
         var lastCompatibilityError: Error?

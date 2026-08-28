@@ -69,7 +69,9 @@ struct DiagnosticsView: View {
                         Button(t("Repair Closed-Lid Service…", "Восстановить службу Closed-Lid…")) {
                             model.installClosedLidHelper()
                         }
-                        .disabled(model.closedLidHelperActionInProgress)
+                        .disabled(
+                            model.closedLidHelperActionInProgress || !model.closedLidHelperSetupAvailable
+                        )
                     }
                     Button(t("Remove Closed-Lid Service…", "Удалить службу Closed-Lid…")) {
                         model.removeClosedLidHelper()
@@ -78,7 +80,9 @@ struct DiagnosticsView: View {
                     Button(t("Set Up Closed-Lid with Touch ID…", "Настроить Closed-Lid через Touch ID…")) {
                         model.installClosedLidHelper()
                     }
-                    .disabled(model.closedLidHelperActionInProgress)
+                    .disabled(
+                        model.closedLidHelperActionInProgress || !model.closedLidHelperSetupAvailable
+                    )
                 }
                 Spacer()
                 Text(

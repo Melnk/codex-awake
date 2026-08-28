@@ -82,12 +82,7 @@ public actor ClosedLidHelperClient: ClosedLidHelperCommunicating {
         if ClosedLidHelperServiceManager.state == .enabled {
             return .modern
         }
-        let legacyIsInstalled =
-            FileManager.default.isExecutableFile(
-                atPath: ClosedLidHelperConstants.legacyInstalledExecutablePath)
-            && FileManager.default.fileExists(
-                atPath: ClosedLidHelperConstants.legacyInstalledPlistPath)
-        return legacyIsInstalled ? .legacy : .modern
+        return ClosedLidHelperServiceManager.legacyInstallationIsCompatible ? .legacy : .modern
     }
 }
 
@@ -129,7 +124,7 @@ private final class XPCReplyGate: @unchecked Sendable {
 
     func scheduleTimeout() {
         timeoutTask = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            do { try await Task.sleep(for: .seconds(3)) } catch { return }
             self?.fail(.unavailable("request timed out"))
         }
     }

@@ -6,7 +6,11 @@ import XCTest
 final class ClosedLidLeaseTests: XCTestCase {
     func testActiveProtectionAcquiresAndReleaseRestoresLease() async throws {
         let helper = MockClosedLidHelper()
-        let manager = ClosedLidLeaseManager(helper: helper, token: "test-token")
+        let manager = ClosedLidLeaseManager(
+            helper: helper,
+            token: "test-token",
+            helperRegistrationCheck: { true }
+        )
 
         try await manager.setRequested(true, protectionIsActive: true)
         var snapshot = await manager.snapshot()
@@ -35,10 +39,37 @@ final class ClosedLidLeaseTests: XCTestCase {
         XCTAssertFalse(snapshot.leaseActive)
     }
 
+    func testRequestedProtectionDoesNotContactUnregisteredHelper() async {
+        let helper = MockClosedLidHelper()
+        let manager = ClosedLidLeaseManager(
+            helper: helper,
+            token: "test-token",
+            helperRegistrationCheck: { false }
+        )
+
+        do {
+            try await manager.setRequested(true, protectionIsActive: true)
+            XCTFail("An unregistered helper must reject the request")
+        } catch {
+            // Expected: the manager fails locally without opening a repeating XPC connection.
+        }
+
+        let acquireCount = await helper.acquireCount
+        let snapshot = await manager.snapshot()
+        XCTAssertEqual(acquireCount, 0)
+        XCTAssertFalse(snapshot.helperInstalled)
+        XCTAssertFalse(snapshot.helperReachable)
+        XCTAssertNotNil(snapshot.lastError)
+    }
+
     func testHelperFailureDoesNotLoseIdleAssertion() async throws {
         let idle = MockPowerAssertionController()
         let helper = MockClosedLidHelper(failure: TestClosedLidError.unavailable)
-        let lease = ClosedLidLeaseManager(helper: helper, token: "test-token")
+        let lease = ClosedLidLeaseManager(
+            helper: helper,
+            token: "test-token",
+            helperRegistrationCheck: { true }
+        )
         let protection = PowerProtectionManager(
             idle: idle,
             closedLid: lease,
@@ -60,7 +91,8 @@ final class ClosedLidLeaseTests: XCTestCase {
         let manager = ClosedLidLeaseManager(
             helper: helper,
             token: "test-token",
-            now: { clock.value }
+            now: { clock.value },
+            helperRegistrationCheck: { true }
         )
         do {
             try await manager.setRequested(true, protectionIsActive: true)

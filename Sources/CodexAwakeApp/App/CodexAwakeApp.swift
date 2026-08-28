@@ -9,9 +9,14 @@ extension Notification.Name {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
     private var terminationPending = false
+    private var terminationReplySent = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
+        guard claimPrimaryApplicationInstance() else {
+            NSApplication.shared.terminate(nil)
+            return
+        }
         model?.start()
     }
 
@@ -23,8 +28,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !terminationPending, let model else { return .terminateNow }
         terminationPending = true
         Task { @MainActor in
+            let watchdog = Task { @MainActor [weak self, weak sender] in
+                do { try await Task.sleep(for: .seconds(8)) } catch { return }
+                guard let self, let sender else { return }
+                self.finishTermination(of: sender)
+            }
             await model.shutdown()
-            sender.reply(toApplicationShouldTerminate: true)
+            watchdog.cancel()
+            finishTermination(of: sender)
         }
         return .terminateLater
     }
@@ -38,6 +49,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in urls {
             model?.handleAutomationURL(url)
         }
+    }
+
+    private func claimPrimaryApplicationInstance() -> Bool {
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let currentURL = Bundle.main.bundleURL.standardizedFileURL
+        let otherInstances = NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.melnikoleg.CodexAwake"
+        ).filter { $0.processIdentifier != currentPID }
+
+        guard !otherInstances.isEmpty else { return true }
+
+        let isInstalledCopy = currentURL.path.hasPrefix("/Applications/")
+        if isInstalledCopy {
+            // The installed copy is authoritative. Stop stray developer/dist
+            // copies so they cannot duplicate monitoring and permission prompts.
+            for application in otherInstances {
+                _ = application.terminate()
+            }
+            return true
+        }
+
+        let preferred =
+            otherInstances.first {
+                $0.bundleURL?.standardizedFileURL.path.hasPrefix("/Applications/") == true
+            } ?? otherInstances[0]
+        preferred.activate(options: [.activateAllWindows])
+        return false
+    }
+
+    private func finishTermination(of application: NSApplication) {
+        guard !terminationReplySent else { return }
+        terminationReplySent = true
+        application.reply(toApplicationShouldTerminate: true)
     }
 }
 

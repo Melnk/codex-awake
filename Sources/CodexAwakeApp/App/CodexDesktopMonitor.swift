@@ -15,7 +15,7 @@ final class CodexDesktopMonitor {
 
     private let workspace: NSWorkspace
     private let scanner: any CodexDesktopSessionScanning
-    private let sessionsRoot: URL
+    private let sessionsRoot: URL?
     private let scanInterval: Duration
     private var snapshot = Snapshot()
     private var launchDate: Date?
@@ -26,8 +26,7 @@ final class CodexDesktopMonitor {
     init(
         workspace: NSWorkspace = .shared,
         scanner: any CodexDesktopSessionScanning = CodexDesktopRolloutScanner(),
-        sessionsRoot: URL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".codex/sessions", isDirectory: true),
+        sessionsRoot: URL? = nil,
         scanInterval: Duration = .seconds(1)
     ) {
         self.workspace = workspace
@@ -54,6 +53,7 @@ final class CodexDesktopMonitor {
         }
 
         refreshPresence()
+        guard sessionsRoot != nil else { return }
         activityTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -92,10 +92,9 @@ final class CodexDesktopMonitor {
     }
 
     private func refreshActivity() async {
-        guard snapshot.isRunning else { return }
+        guard snapshot.isRunning, let sessionsRoot else { return }
 
         let scanner = scanner
-        let sessionsRoot = sessionsRoot
         let launchDate = launchDate
         let sessions = await Task.detached(priority: .utility) {
             scanner.activeSessions(in: sessionsRoot, desktopLaunchDate: launchDate)
