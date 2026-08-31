@@ -1,6 +1,5 @@
 import CodexAwakeCore
 import Foundation
-import ServiceManagement
 import XCTest
 
 final class ClosedLidLeaseTests: XCTestCase {
@@ -141,7 +140,7 @@ final class ClosedLidLeaseTests: XCTestCase {
     func testBundledHelperResolvesContainingApplication() throws {
         let application = try ClosedLidClientAuthorization.containingApplicationURL(
             forBundledHelperAt:
-                "/Applications/CodexAwake.app/Contents/Library/PrivilegedHelperTools/com.melnikoleg.CodexAwake.ClosedLidService"
+                "/Applications/CodexAwake.app/Contents/Library/PrivilegedHelperTools/com.melnikoleg.CodexAwake.ClosedLidHelper"
         )
 
         XCTAssertEqual(application.path, "/Applications/CodexAwake.app")
@@ -150,7 +149,7 @@ final class ClosedLidLeaseTests: XCTestCase {
     func testBundledHelperRejectsUnexpectedLocation() {
         XCTAssertThrowsError(
             try ClosedLidClientAuthorization.containingApplicationURL(
-                forBundledHelperAt: "/private/tmp/com.melnikoleg.CodexAwake.ClosedLidService"
+                forBundledHelperAt: "/private/tmp/com.melnikoleg.CodexAwake.ClosedLidHelper"
             )
         )
     }
@@ -190,23 +189,6 @@ final class ClosedLidLeaseTests: XCTestCase {
         XCTAssertEqual(snapshot.connectionState, .active)
     }
 
-    func testMissingRegistrationRecordIsSetupRequiredWhenBundleContainsService() {
-        let state = ClosedLidHelperServiceManager.state(
-            for: .notFound,
-            bundledServiceIsPresent: true
-        )
-
-        XCTAssertEqual(state, .notRegistered)
-    }
-
-    func testMissingBundleFilesRemainUnavailable() {
-        let state = ClosedLidHelperServiceManager.state(
-            for: .notFound,
-            bundledServiceIsPresent: false
-        )
-
-        XCTAssertEqual(state, .unavailable)
-    }
 }
 
 private enum TestClosedLidError: Error {

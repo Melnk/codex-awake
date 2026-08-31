@@ -2,6 +2,7 @@
 set -euo pipefail
 
 LABEL="com.melnikoleg.CodexAwake.ClosedLidHelper"
+OBSOLETE_LABEL="com.melnikoleg.CodexAwake.ClosedLidService"
 DEST_HELPER="/Library/PrivilegedHelperTools/$LABEL"
 DEST_PLIST="/Library/LaunchDaemons/$LABEL.plist"
 STATE_DIR="/var/db/com.melnikoleg.CodexAwake"
@@ -11,6 +12,9 @@ if [[ "$(id -u)" -ne 0 ]]; then
     exit 77
 fi
 
+if /bin/launchctl print "system/$OBSOLETE_LABEL" >/dev/null 2>&1; then
+    /bin/launchctl bootout "system/$OBSOLETE_LABEL" || true
+fi
 if /bin/launchctl print "system/$LABEL" >/dev/null 2>&1; then
     /bin/launchctl bootout "system/$LABEL"
 fi

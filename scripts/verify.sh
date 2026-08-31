@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 APP="$PROJECT_ROOT/dist/CodexAwake.app"
-HELPER_LABEL="com.melnikoleg.CodexAwake.ClosedLidService"
+HELPER_LABEL="com.melnikoleg.CodexAwake.ClosedLidHelper"
 [[ -d "$APP" ]] || { echo "Missing $APP; run scripts/build_app.sh first" >&2; exit 1; }
 
 plutil -lint "$APP/Contents/Info.plist"
@@ -14,7 +14,9 @@ plutil -lint "$APP/Contents/Info.plist"
 [[ -x "$APP/Contents/MacOS/CodexAwake" ]]
 codesign --verify --deep --strict "$APP"
 codesign --verify --strict "$APP/Contents/Library/PrivilegedHelperTools/$HELPER_LABEL"
-/usr/bin/plutil -lint "$APP/Contents/Library/LaunchDaemons/$HELPER_LABEL.plist"
+/usr/bin/plutil -lint "$APP/Contents/Resources/$HELPER_LABEL.plist"
+[[ -x "$APP/Contents/Resources/install-closed-lid-helper.sh" ]]
+[[ -x "$APP/Contents/Resources/uninstall-closed-lid-helper.sh" ]]
 test -s "$APP/Contents/Resources/Metadata.appintents/version.json"
 test -s "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata"
 grep -q 'ToggleCodexAwakeProtectionIntent' "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata"

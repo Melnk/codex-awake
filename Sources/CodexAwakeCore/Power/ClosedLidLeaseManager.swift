@@ -49,7 +49,7 @@ public actor ClosedLidLeaseManager {
         renewalInterval: Duration = ClosedLidHelperConstants.renewalInterval,
         now: @escaping @Sendable () -> Date = { Date() },
         helperRegistrationCheck: @escaping @Sendable () -> Bool = {
-            ClosedLidHelperServiceManager.isRegistered
+            ClosedLidHelperInstallation.isCompatible
         }
     ) {
         self.helper = helper
@@ -120,7 +120,6 @@ public actor ClosedLidLeaseManager {
 
     private var helperInstalled: Bool {
         helperRegistrationCheck()
-            || ClosedLidHelperServiceManager.legacyInstallationIsCompatible
     }
 
     private func acquire() async throws {

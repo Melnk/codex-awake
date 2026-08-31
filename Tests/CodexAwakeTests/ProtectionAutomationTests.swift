@@ -125,7 +125,11 @@ final class ProtectionAutomationTests: XCTestCase {
         XCTAssertTrue(ProtectionProfile.preset(.work).power.preventDisplaySleep)
         XCTAssertFalse(ProtectionProfile.preset(.nightTask).power.preventDisplaySleep)
         XCTAssertTrue(ProtectionProfile.preset(.nightTask).rules.requiresExternalPower)
+        XCTAssertEqual(ProtectionProfile.preset(.nightTask).rules.trigger, .codexRunning)
+        XCTAssertFalse(ProtectionProfile.preset(.nightTask).rules.automaticallyStopsAfterTasks)
         XCTAssertFalse(ProtectionProfile.preset(.closedLid).rules.requiresExternalPower)
+        XCTAssertEqual(ProtectionProfile.preset(.closedLid).rules.trigger, .codexRunning)
+        XCTAssertFalse(ProtectionProfile.preset(.closedLid).rules.automaticallyStopsAfterTasks)
         XCTAssertTrue(ProtectionProfile.preset(.closedLid).closedLidEnabled)
         XCTAssertEqual(ProtectionProfile.preset(.presentation).rules.trigger, .codexRunning)
     }

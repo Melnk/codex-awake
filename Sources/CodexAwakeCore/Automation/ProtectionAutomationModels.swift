@@ -153,9 +153,9 @@ public struct ProtectionProfile: Equatable, Sendable {
             Self(
                 id: id,
                 rules: .init(
-                    trigger: .activeTasks,
+                    trigger: .codexRunning,
                     requiresExternalPower: true,
-                    automaticallyStopsAfterTasks: true,
+                    automaticallyStopsAfterTasks: false,
                     schedule: .init(
                         isEnabled: true,
                         startMinute: 22 * 60,
@@ -170,8 +170,8 @@ public struct ProtectionProfile: Equatable, Sendable {
             Self(
                 id: id,
                 rules: .init(
-                    trigger: .activeTasks,
-                    automaticallyStopsAfterTasks: true
+                    trigger: .codexRunning,
+                    automaticallyStopsAfterTasks: false
                 ),
                 power: .init(preventSystemSleep: true, preventDisplaySleep: false),
                 closedLidEnabled: true

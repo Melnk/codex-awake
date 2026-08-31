@@ -28,7 +28,7 @@ public protocol CodexDesktopSessionScanning: Sendable {
 
 /// Reads only rollout identity metadata and task lifecycle markers. Prompt and response
 /// fields are never decoded, returned, or logged.
-public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecked Sendable {
+public final class CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecked Sendable {
     private enum LifecycleMarker {
         case started
         case completed
@@ -38,6 +38,8 @@ public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecke
     private let chunkSize = 64 * 1024
     private let startedPattern = Data(#""type":"task_started""#.utf8)
     private let completedPattern = Data(#""type":"task_complete""#.utf8)
+    private let cacheLock = NSLock()
+    private var cache: [String: CachedFile] = [:]
 
     public init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -47,7 +49,12 @@ public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecke
         in sessionsRoot: URL,
         desktopLaunchDate: Date? = nil
     ) -> [CodexDesktopSessionState] {
-        let keys: [URLResourceKey] = [.isRegularFileKey, .contentModificationDateKey]
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+
+        let keys: [URLResourceKey] = [
+            .isRegularFileKey, .contentModificationDateKey, .fileSizeKey,
+        ]
         guard
             let enumerator = fileManager.enumerator(
                 at: sessionsRoot,
@@ -57,19 +64,41 @@ public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecke
         else { return [] }
 
         var active: [CodexDesktopSessionState] = []
+        var observedPaths = Set<String>()
         for case let file as URL in enumerator where file.pathExtension == "jsonl" {
             guard let values = try? file.resourceValues(forKeys: Set(keys)),
                 values.isRegularFile == true,
-                let modifiedAt = values.contentModificationDate
+                let modifiedAt = values.contentModificationDate,
+                let fileSize = values.fileSize
             else { continue }
+            observedPaths.insert(file.path)
 
             // A lifecycle marker left by a previous crashed app launch is not live work.
             if let desktopLaunchDate, modifiedAt < desktopLaunchDate.addingTimeInterval(-2) {
                 continue
             }
-            guard let metadata = desktopSessionMetadata(in: file),
-                lastLifecycleMarker(in: file) == .started
-            else { continue }
+
+            let cached = cache[file.path]
+            let metadata = cached?.metadata ?? desktopSessionMetadata(in: file)
+            let marker: LifecycleMarker?
+            if let cached, cached.fileSize == fileSize, cached.modifiedAt == modifiedAt {
+                marker = cached.marker
+            } else if let cached, cached.fileSize < fileSize, cached.metadata != nil {
+                marker =
+                    lastLifecycleMarker(
+                        inAppendedBytesOf: file,
+                        previousSize: cached.fileSize
+                    ) ?? cached.marker
+            } else {
+                marker = lastLifecycleMarker(in: file)
+            }
+            cache[file.path] = CachedFile(
+                fileSize: fileSize,
+                modifiedAt: modifiedAt,
+                metadata: metadata,
+                marker: marker
+            )
+            guard let metadata, marker == .started else { continue }
             active.append(
                 .init(
                     id: metadata.id,
@@ -78,6 +107,7 @@ public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecke
                     startedAt: metadata.startedAt
                 ))
         }
+        cache = cache.filter { observedPaths.contains($0.key) }
 
         return active.sorted {
             if $0.modifiedAt == $1.modifiedAt { return $0.id < $1.id }
@@ -89,6 +119,13 @@ public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecke
         let id: String
         let workspacePath: String?
         let startedAt: Date?
+    }
+
+    private struct CachedFile {
+        let fileSize: Int
+        let modifiedAt: Date
+        let metadata: SessionMetadata?
+        let marker: LifecycleMarker?
     }
 
     private func desktopSessionMetadata(in file: URL) -> SessionMetadata? {
@@ -153,5 +190,38 @@ public struct CodexDesktopRolloutScanner: CodexDesktopSessionScanning, @unchecke
             }
         }
         return nil
+    }
+
+    private func lastLifecycleMarker(
+        inAppendedBytesOf file: URL,
+        previousSize: Int
+    ) -> LifecycleMarker? {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+        defer { try? handle.close() }
+
+        let overlapCount = max(startedPattern.count, completedPattern.count) - 1
+        let start = UInt64(max(0, previousSize - overlapCount))
+        do {
+            try handle.seek(toOffset: start)
+            guard let appended = try handle.readToEnd() else { return nil }
+            return lastLifecycleMarker(in: appended)
+        } catch {
+            return nil
+        }
+    }
+
+    private func lastLifecycleMarker(in data: Data) -> LifecycleMarker? {
+        let started = data.range(of: startedPattern, options: .backwards)
+        let completed = data.range(of: completedPattern, options: .backwards)
+        switch (started, completed) {
+        case (.some(let startedRange), .some(let completedRange)):
+            return startedRange.lowerBound > completedRange.lowerBound ? .started : .completed
+        case (.some, .none):
+            return .started
+        case (.none, .some):
+            return .completed
+        case (.none, .none):
+            return nil
+        }
     }
 }

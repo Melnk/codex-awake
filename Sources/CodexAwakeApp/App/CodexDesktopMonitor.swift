@@ -26,8 +26,9 @@ final class CodexDesktopMonitor {
     init(
         workspace: NSWorkspace = .shared,
         scanner: any CodexDesktopSessionScanning = CodexDesktopRolloutScanner(),
-        sessionsRoot: URL? = nil,
-        scanInterval: Duration = .seconds(1)
+        sessionsRoot: URL? = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/sessions", isDirectory: true),
+        scanInterval: Duration = .seconds(2)
     ) {
         self.workspace = workspace
         self.scanner = scanner

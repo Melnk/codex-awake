@@ -66,23 +66,19 @@ struct DiagnosticsView: View {
                             model.retryClosedLidHelperConnection()
                         }
                         .disabled(model.closedLidHelperActionInProgress)
-                        Button(t("Repair Closed-Lid Service…", "Восстановить службу Closed-Lid…")) {
+                        Button(t("Repair / Update Closed-Lid Helper…", "Восстановить / обновить Closed-Lid helper…")) {
                             model.installClosedLidHelper()
                         }
-                        .disabled(
-                            model.closedLidHelperActionInProgress || !model.closedLidHelperSetupAvailable
-                        )
+                        .disabled(model.closedLidHelperActionInProgress)
                     }
-                    Button(t("Remove Closed-Lid Service…", "Удалить службу Closed-Lid…")) {
+                    Button(t("Remove Closed-Lid Helper…", "Удалить Closed-Lid helper…")) {
                         model.removeClosedLidHelper()
                     }
                 } else {
-                    Button(t("Set Up Closed-Lid with Touch ID…", "Настроить Closed-Lid через Touch ID…")) {
+                    Button(t("Install Closed-Lid Helper…", "Установить Closed-Lid helper…")) {
                         model.installClosedLidHelper()
                     }
-                    .disabled(
-                        model.closedLidHelperActionInProgress || !model.closedLidHelperSetupAvailable
-                    )
+                    .disabled(model.closedLidHelperActionInProgress)
                 }
                 Spacer()
                 Text(

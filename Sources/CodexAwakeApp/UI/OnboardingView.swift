@@ -191,7 +191,7 @@ struct OnboardingView: View {
                 "A narrow bundled service keeps the whole Mac awake with the lid closed and restores normal sleep afterward.",
                 "Узкая встроенная служба поддерживает работу всего Mac с закрытой крышкой и затем возвращает обычный сон."
             ),
-            badge: t("Touch ID setup", "Настройка через Touch ID")
+            badge: t("One-time admin approval", "Одно подтверждение администратора")
         )
     }
 

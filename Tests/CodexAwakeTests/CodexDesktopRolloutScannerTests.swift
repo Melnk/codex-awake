@@ -65,6 +65,24 @@ final class CodexDesktopRolloutScannerTests: XCTestCase {
         )
         XCTAssertTrue(result.isEmpty)
     }
+
+    func testCachedDesktopRolloutTracksAppendedLifecycleMarkers() throws {
+        let fixture = try RolloutFixture(
+            events: ["task_started"],
+            source: "vscode",
+            originator: "Codex Desktop"
+        )
+        defer { fixture.remove() }
+        let scanner = CodexDesktopRolloutScanner()
+
+        XCTAssertEqual(scanner.activeSessions(in: fixture.root).map(\.id), [fixture.sessionID])
+
+        try FileHandle(forWritingTo: fixture.file).appendLifecycle("task_complete")
+        XCTAssertTrue(scanner.activeSessions(in: fixture.root).isEmpty)
+
+        try FileHandle(forWritingTo: fixture.file).appendLifecycle("task_started")
+        XCTAssertEqual(scanner.activeSessions(in: fixture.root).map(\.id), [fixture.sessionID])
+    }
 }
 
 private struct RolloutFixture {
@@ -97,5 +115,11 @@ private extension FileHandle {
         try seekToEnd()
         try write(contentsOf: Data((line + "\n").utf8))
         try close()
+    }
+
+    func appendLifecycle(_ event: String) throws {
+        try appendLine(
+            #"{"timestamp":"2026-08-11T10:00:09Z","type":"event_msg","payload":{"type":"\#(event)","turn_id":"turn-2"}}"#
+        )
     }
 }

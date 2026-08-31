@@ -528,14 +528,12 @@ struct CockpitView: View {
             .accessibilityHint(closedLidStatusText)
 
             if !model.closedLidProtection.helperInstalled {
-                Button(t("Set up with Touch ID…", "Настроить через Touch ID…")) {
+                Button(t("One-time helper setup…", "Однократная настройка helper…")) {
                     model.installClosedLidHelper()
                 }
                 .buttonStyle(CockpitSecondaryButtonStyle())
                 .font(.system(size: 10, weight: .semibold))
-                .disabled(
-                    model.closedLidHelperActionInProgress || !model.closedLidHelperSetupAvailable
-                )
+                .disabled(model.closedLidHelperActionInProgress)
             } else if !model.closedLidProtection.helperReachable {
                 HStack(spacing: 8) {
                     Button(t("Retry", "Повторить")) {
@@ -544,22 +542,20 @@ struct CockpitView: View {
                     .buttonStyle(CockpitSecondaryButtonStyle())
                     .disabled(model.closedLidHelperActionInProgress)
 
-                    Button(t("Repair service…", "Восстановить службу…")) {
+                    Button(t("Repair / Update…", "Восстановить / обновить…")) {
                         model.installClosedLidHelper()
                     }
                     .buttonStyle(CockpitSecondaryButtonStyle())
-                    .disabled(
-                        model.closedLidHelperActionInProgress || !model.closedLidHelperSetupAvailable
-                    )
                 }
                 .font(.system(size: 10, weight: .semibold))
+                .disabled(model.closedLidHelperActionInProgress)
             }
 
             Text(
                 model.closedLidActionMessage
                     ?? t(
-                        "Touch ID confirms setup; macOS controls the protected background service. Normal sleep returns when its lease expires.",
-                        "Touch ID подтверждает настройку, а macOS управляет защищённой фоновой службой. После окончания аренды обычный сон восстановится."
+                        "Requires the administrator password once. Normal sleep returns when its lease expires.",
+                        "Один раз требуется пароль администратора. После окончания аренды обычный сон восстановится."
                     )
             )
             .font(.system(size: 9))

@@ -6,10 +6,10 @@
 
 CodexAwake is a native macOS menu bar utility and Codex cockpit. It launches its own local Codex App Server, provides a streamed chat UI for Codex, independently controls **idle system sleep** and **display sleep**, and offers an explicit opt-in **Closed-Lid** mode backed by a narrow privileged helper.
 
-It uses the official App Server protocol for managed-task state. Independent Codex Desktop and ChatGPT tasks remain private: CodexAwake observes only whether their application process is running and never scans `~/.codex` or another app's data. CodexAwake owns at most one `PreventUserIdleSystemSleep` assertion and one `PreventUserIdleDisplaySleep` assertion, selected independently in the cockpit. Closed-Lid is separate, defaults off, and changes the system sleep policy only while a short renewable lease is active.
+It uses the official App Server protocol for managed-task state. For independent Codex Desktop tasks, a narrow local detector reads only rollout identity metadata and exact `task_started` / `task_complete` lifecycle markers. It never decodes prompt, response, reasoning, tool-output, title, or project-file contents. CodexAwake owns at most one `PreventUserIdleSystemSleep` assertion and one `PreventUserIdleDisplaySleep` assertion, selected independently in the cockpit. Closed-Lid is separate, defaults off, and changes the system sleep policy only while a short renewable lease is active.
 
 > [!IMPORTANT]
-> CodexAwake tracks its own cockpit tasks and Codex CLI/TUI sessions connected with `--remote` to the App Server launched by CodexAwake. Ordinary Codex Desktop tasks, unmanaged CLI sessions, Codex Cloud, another user's processes, and remote hosts remain out of scope unless they connect to the managed server. The installed Codex/ChatGPT app contributes only an ON/OFF presence signal.
+> CodexAwake tracks its own cockpit tasks, Codex CLI/TUI sessions connected with `--remote` to its App Server, and active top-level local Codex Desktop tasks identified by lifecycle markers. Subagents, prompt/answer text, unmanaged CLI sessions, Codex Cloud, another user's processes, and remote hosts remain out of scope.
 
 ## Install and run / Установка и запуск
 
@@ -44,9 +44,9 @@ You need:
 
    Use the **EN / RU** switch in the top-right corner to change the application language. Choose **System**, **Light**, or **Dark** appearance next to it. Both choices are saved for the next launch.
 
-5. Optional, for an Apple Developer signed build: move CodexAwake to **Applications**, click **Set Up Closed-Lid with Touch ID…**, and enable **Closed-lid mode**. Touch ID confirms your request; if macOS opens **System Settings → General → Login Items**, allow the CodexAwake background service there. Close the lid only after the status says **Active — you can close the lid**.
+5. Optional: move CodexAwake to **Applications**, click **One-time Closed-Lid Helper Setup…**, and enter the administrator password in the Terminal window opened by the app. The password is handled only by `sudo`; CodexAwake never receives or stores it. Close the lid only after the status says **Active — you can close the lid**.
 
-   A source build produced with the default ad-hoc signature cannot run an `SMAppService` root daemon. The UI reports this immediately and does not show a misleading Touch ID prompt. Use a Developer ID signed build for Closed-Lid; the ordinary system/display assertions still work in local builds.
+   Local ad-hoc builds are supported. Because they are pinned to the exact app signature, installing a newly built app may require running the one-time helper setup again.
 
 To keep the app in Applications, open the build folder and drag **CodexAwake.app** into **Applications**:
 
@@ -93,9 +93,9 @@ If macOS blocks the first launch, right-click **CodexAwake.app**, choose **Open*
 
    Переключатель **EN / RU** в правом верхнем углу меняет язык приложения. Рядом выбирается **Системная**, **Светлая** или **Тёмная** тема. Оба выбора сохраняются для следующих запусков.
 
-5. Необязательно, только для сборки с подписью Apple Developer: перенесите CodexAwake в **Программы**, нажмите **Настроить Closed-Lid через Touch ID…** и включите **Режим закрытой крышки**. Touch ID подтверждает запрос; если macOS откроет **Системные настройки → Основные → Объекты входа**, разрешите там фоновую службу CodexAwake. Закрывайте крышку только после появления статуса **Active — you can close the lid**.
+5. Необязательно: перенесите CodexAwake в **Программы**, нажмите **Однократная настройка Closed-Lid helper…** и введите пароль администратора в открывшемся окне Терминала. Пароль обрабатывает только `sudo`; CodexAwake не получает и не сохраняет его. Закрывайте крышку только после появления статуса **Active — you can close the lid**.
 
-   Локальная сборка с обычной ad-hoc подписью не может запустить root-daemon через `SMAppService`. Приложение сразу объясняет это и не показывает бессмысленный запрос Touch ID. Для Closed-Lid нужна сборка с подписью Developer ID; обычная защита сна и экрана работает и в локальной сборке.
+   Локальные ad-hoc сборки поддерживаются. Они закрепляются за точной подписью приложения, поэтому после установки новой сборки однократную настройку helper может потребоваться повторить.
 
 Чтобы перенести приложение в «Программы», откройте папку сборки и перетащите **CodexAwake.app** в **Applications**:
 
@@ -167,15 +167,16 @@ The **Closed Lid** profile does not require a charger by default. The separate *
 
 ### Version 1.7 / Версия 1.7
 
-**English.** The left task center shows active tasks managed by CodexAwake and up to 20 recently finished tasks. Each row contains the project folder, working path, elapsed time, and lifecycle status. Click a row to open that exact task in the installed Codex app. Drag the vertical divider to make the task panel or chat wider. Active-task counts appear in the menu bar and on the Dock icon. macOS notifications report completion, failure, approval, and user-input states.
+**English.** The left task center shows managed tasks and detected top-level Codex Desktop tasks, plus up to 20 recently finished tasks. Each row contains privacy-safe project metadata, elapsed time, and lifecycle status. Click a row to open that exact task in the installed Codex app. Drag the vertical divider to make the task panel or chat wider. Active-task counts appear in the menu bar and on the Dock icon. macOS notifications report completion, failure, approval, and user-input states.
 
-**Русский.** В левом центре задач показываются активные задачи под управлением CodexAwake и до 20 недавних завершённых задач. В строке есть название проекта, рабочая папка, время работы и текущий статус. Нажмите на строку, чтобы открыть именно эту задачу в установленном приложении Codex. Потяните вертикальный разделитель, чтобы расширить список или чат. Счётчик активных задач виден в строке меню и на иконке Dock. Уведомления macOS сообщают о завершении, ошибке, подтверждении и ожидании ответа пользователя.
+**Русский.** В левом центре задач показываются управляемые задачи и обнаруженные верхнеуровневые задачи Codex Desktop, а также до 20 недавних завершённых задач. В строке есть только безопасные метаданные проекта, время работы и текущий статус. Нажмите на строку, чтобы открыть именно эту задачу в установленном приложении Codex. Потяните вертикальный разделитель, чтобы расширить список или чат. Счётчик активных задач виден в строке меню и на иконке Dock. Уведомления macOS сообщают о завершении, ошибке, подтверждении и ожидании ответа пользователя.
 
 ## How it works
 
 ```text
 Cockpit / connected CLI ─→ managed App Server events ───────────────┐
-Codex Desktop bundle ID ─→ ON/OFF presence only ────────────────────┼─→ protection decision
+Codex Desktop rollouts ──→ lifecycle markers only ──────────────────┼─→ combined active sessions
+Codex Desktop bundle ID ─→ ON/OFF presence ─────────────────────────┘              ↓
                                                                PowerProtectionManager
                                                                   ↙             ↘
                                              system + display assertions    optional XPC lease
@@ -196,17 +197,18 @@ Tracked:
 - project name, working folder, start/update time, and active statuses including `waitingOnApproval` for managed tasks;
 - lifecycle-derived waiting, thinking, tool, approval, completed, and error states;
 - whether ChatGPT/Codex Desktop is currently running;
+- active top-level Codex Desktop tasks whose local rollout metadata identifies Codex Desktop and whose latest lifecycle marker is `task_started`.
 
 Not tracked:
 
 - `codex` started without `--remote`;
-- independent Codex Desktop tasks, prompts, responses, reasoning, tool output, titles, rollout files, and subagent activity;
+- Codex Desktop prompts, responses, reasoning, tool output, titles, and subagent activity;
 - Codex Cloud jobs;
 - other users' processes;
 - unrelated App Server processes;
 - remote machines not using the displayed endpoint.
 
-The first-run menu, cockpit, and Diagnostics window repeat this boundary. Desktop presence is shown as `CODEX APP ON/OFF`; `ACTIVE SESSIONS` contains only managed App Server tasks. With presence protection enabled, the running Desktop app protects idle sleep even between managed tasks.
+The first-run menu, cockpit, and Diagnostics window repeat this boundary. Desktop presence is shown as `CODEX APP ON/OFF`; `ACTIVE SESSIONS` combines managed tasks with detected top-level Desktop lifecycle activity. With presence protection enabled, the running Desktop app protects idle sleep even between tasks.
 
 ## Requirements
 
@@ -226,7 +228,7 @@ scripts/test.sh
 scripts/build_app.sh
 ```
 
-The release build is assembled as `dist/CodexAwake.app` and ad-hoc signed for local development. It contains the Closed-Lid service and its `SMAppService` manifest, but macOS runs that root daemon only from a properly Apple Developer signed build. A paid Apple Developer account is not required for the cockpit, chat, automation, or ordinary system/display sleep protection.
+The release build is assembled as `dist/CodexAwake.app` and ad-hoc signed for local development. It contains the narrow Closed-Lid helper and explicit install/uninstall scripts. A paid Apple Developer account is not required: the user authorizes the helper installation once through `sudo` in Terminal.
 
 To build a debug bundle:
 
@@ -242,7 +244,7 @@ CodexAwake uses the normal macOS Dock lifecycle (`LSUIElement=false`), so the Do
 
 1. cockpit tasks and sessions connected to its managed `--remote` endpoint are tracked individually;
 2. Codex Desktop process presence and top-level task lifecycle are detected, while chat contents remain private;
-3. idle sleep protection is unprivileged; Closed-Lid is a separate opt-in bundled service, registered by macOS after explicit user approval, whose lease automatically expires.
+3. idle sleep protection is unprivileged; Closed-Lid is a separate opt-in helper installed after explicit administrator approval, whose lease automatically expires.
 
 CodexAwake first tries the runtime bundled inside an installed ChatGPT/Codex app. If no compatible runtime can be found, the menu shows `Codex: Not found` and App Server state `Failed`; open **Diagnostics… → Choose Codex Binary…** to select an executable.
 
@@ -255,7 +257,7 @@ The locator checks, in order:
 3. `command -v codex` in a login zsh;
 4. `/opt/homebrew/bin/codex`;
 5. `/usr/local/bin/codex`;
-6. `~/.local/bin/codex` and `~/.codex/bin/codex`.
+6. `~/.local/bin/codex`.
 
 It runs read-only `--version` and help probes. It does not modify shell startup files or global Codex configuration.
 
@@ -307,14 +309,14 @@ The display-sleep assertion still allows sleep when a MacBook lid is closed. Clo
 
 1. Build CodexAwake and move `CodexAwake.app` to `/Applications`.
 2. In the cockpit, turn on **Closed-lid mode**.
-3. Click **Set up with Touch ID**. If macOS reports that approval is required, enable CodexAwake in **System Settings → General → Login Items** and return to the app.
+3. Click **One-time helper setup** and enter the administrator password in Terminal. The password goes directly to `sudo` and is never visible to CodexAwake.
 4. Wait until the cockpit says **Active — you can close the lid** before closing the display.
 
-The service accepts only `status`, `acquire`, `renew`, and `release` over its fixed XPC interface. It is registered with `SMAppService` from `Contents/Library/LaunchDaemons`; no executable is copied by a shell script. At startup it validates the containing CodexAwake bundle. Developer ID builds authorize the exact app identifier plus Apple Team ID, while local ad-hoc builds authorize the current bundle CDHash. Because the service remains inside the app bundle, replacing a local build no longer requires another `sudo` installation.
+The helper accepts only `status`, `acquire`, `renew`, and `release` over its fixed XPC interface. The reviewed install script copies only the bundled helper and a fixed launchd manifest to their standard root-owned locations. Developer ID builds authorize the app identifier plus Apple Team ID; local ad-hoc builds authorize the exact bundle CDHash. Updating an ad-hoc build therefore requires running **Repair / Update** once with the administrator password.
 
 While ordinary sleep protection is required, CodexAwake acquires a 120-second lease and renews it every 30 seconds. Failed connections recover automatically with capped exponential backoff; **Retry** performs an immediate password-free status check. The root helper snapshots the prior `disablesleep` value, applies `pmset -a disablesleep 1`, persists only token expirations and the restoration value under `/var/db/com.melnikoleg.CodexAwake`, and restores the prior value after the final release, app shutdown, helper shutdown, or lease expiry. A client crash can therefore leave the setting changed for no more than the remaining bounded lease.
 
-Closed-Lid keeps the computer awake as a whole, not only Codex. Music, downloads, servers, and other processes can continue; the internal display is physically unavailable. Battery drain and heat will be higher, and macOS may still force sleep for low battery, thermal protection, shutdown, or other safety conditions. The feature defaults off. Use **Diagnostics → Remove Closed-Lid Service** to restore normal behavior and unregister the daemon.
+Closed-Lid keeps the computer awake as a whole, not only Codex. Music, downloads, servers, and other processes can continue; the internal display is physically unavailable. Battery drain and heat will be higher, and macOS may still force sleep for low battery, thermal protection, shutdown, or other safety conditions. The feature defaults off. Use **Diagnostics → Remove Closed-Lid Helper** and enter the administrator password to restore normal behavior.
 
 ## Reconnect and fail-safe policy
 
@@ -440,10 +442,10 @@ The test suite wraps power management and the privileged helper client behind pr
 
 **Closed-Lid says Helper Required or Helper Needs Update**
 
-- Move CodexAwake to `/Applications`, then click **Set Up Closed-Lid with Touch ID**.
-- If System Settings opens, allow CodexAwake under **General → Login Items**, return to the app, and click **Retry**.
+- Move CodexAwake to `/Applications`, then click **One-time Closed-Lid Helper Setup**.
+- Enter the administrator password in Terminal, wait for the success message, return to the app, and click **Retry** if needed.
 - Do not close the lid until the cockpit explicitly says **LEASE ACTIVE · LID MAY CLOSE**.
-- Check the sanitized service error in Diagnostics. If removal is needed, use **Remove Closed-Lid Service**; no Terminal command is created.
+- Check the sanitized helper error in Diagnostics. Use **Repair / Update** after every ad-hoc app replacement because the exact CDHash changes.
 
 ## Architecture and release workflow
 

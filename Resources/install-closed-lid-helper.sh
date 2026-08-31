@@ -2,6 +2,7 @@
 set -euo pipefail
 
 LABEL="com.melnikoleg.CodexAwake.ClosedLidHelper"
+OBSOLETE_LABEL="com.melnikoleg.CodexAwake.ClosedLidService"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SOURCE_HELPER="$APP_ROOT/Contents/Library/PrivilegedHelperTools/$LABEL"
@@ -42,6 +43,11 @@ trap '/bin/rm -f "$TEMP_PLIST"' EXIT
 /usr/libexec/PlistBuddy -c "Set :ProgramArguments:2 $CLIENT_IDENTITY" "$TEMP_PLIST"
 /usr/bin/plutil -lint "$TEMP_PLIST"
 
+# Remove the abandoned SMAppService registration from the Touch ID experiment.
+# It points at a helper that no longer exists and otherwise keeps crash-looping.
+if /bin/launchctl print "system/$OBSOLETE_LABEL" >/dev/null 2>&1; then
+    /bin/launchctl bootout "system/$OBSOLETE_LABEL" || true
+fi
 if /bin/launchctl print "system/$LABEL" >/dev/null 2>&1; then
     /bin/launchctl bootout "system/$LABEL"
 fi
@@ -71,6 +77,6 @@ echo "CodexAwake Closed-Lid helper installed successfully."
 if [[ "$CLIENT_MODE" == "--client-team-id" ]]; then
     echo "Signed updates from Team $CLIENT_IDENTITY will reuse this helper without another password."
 else
-    echo "This local ad-hoc build is pinned to its exact code hash for security."
+    echo "This local build is pinned to its exact code hash for security."
 fi
 echo "Return to CodexAwake and enable CLOSED-LID."

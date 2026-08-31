@@ -57,8 +57,6 @@ final class AppModel: ObservableObject {
     private let binaryLocator = CodexBinaryLocator()
     private let socketManager = SocketPathManager()
     private let launchManager = LaunchAtLoginManager()
-    private let closedLidHelperService = ClosedLidHelperServiceManager()
-    private let touchIDAuthorization = TouchIDAuthorizationService()
     private let automationEngine = ProtectionAutomationEngine()
     private let powerSourceProvider: any PowerSourceProviding
     private let statisticsStore: ProtectionStatisticsStore
@@ -75,7 +73,6 @@ final class AppModel: ObservableObject {
     private var lastReconciliationAt: Date?
     private let startedAt = Date()
     private var didLoadTaskRegistry = false
-    private var didAttemptClosedLidRegistrationRefresh = false
 
     init(
         preferences: any AppPreferencesStoring = UserDefaultsAppPreferences(),
@@ -102,14 +99,21 @@ final class AppModel: ObservableObject {
         compactMenuBarEnabled = preferences.compactMenuBarEnabled
         var savedAutomationRules = preferences.automationRules
         let savedProtectionProfile = preferences.protectionProfileID
-        if preferences.automationSchemaVersion < Self.automationSchemaVersion,
-            savedProtectionProfile == .closedLid
-        {
-            // 2.0 originally made charger power mandatory for this preset. The
-            // root helper itself can maintain a lease on battery, so keep that
-            // restriction opt-in and migrate the misleading saved preset once.
-            savedAutomationRules.requiresExternalPower = false
-            preferences.setAutomationRules(savedAutomationRules)
+        if preferences.automationSchemaVersion < Self.automationSchemaVersion {
+            // External task state cannot be read reliably without requesting
+            // access to another app's private data. Long-running profiles use
+            // Codex process presence, which guarantees a real power assertion.
+            switch savedProtectionProfile {
+            case .closedLid, .nightTask:
+                savedAutomationRules.trigger = .codexRunning
+                savedAutomationRules.automaticallyStopsAfterTasks = false
+                if savedProtectionProfile == .closedLid {
+                    savedAutomationRules.requiresExternalPower = false
+                }
+                preferences.setAutomationRules(savedAutomationRules)
+            case .work, .presentation:
+                break
+            }
         }
         preferences.setAutomationSchemaVersion(Self.automationSchemaVersion)
         automationRules = savedAutomationRules
@@ -156,9 +160,6 @@ final class AppModel: ObservableObject {
             "CodexAwake \(AppBuildInfo.displayVersion) started.",
             "CodexAwake \(AppBuildInfo.displayVersion) запущен."
         )
-        if let issue = closedLidHelperService.registrationIssue {
-            closedLidActionMessage = localizedClosedLidSetupError(issue)
-        }
         desktopMonitor.start { [weak self] snapshot in
             self?.handleCodexDesktopSnapshot(snapshot)
         }
@@ -352,130 +353,81 @@ final class AppModel: ObservableObject {
 
     func installClosedLidHelper() {
         guard !closedLidHelperActionInProgress else { return }
-        if let issue = closedLidHelperService.registrationIssue {
-            closedLidActionMessage = localizedClosedLidSetupError(issue)
-            appendEvent(
-                .warning,
-                "Closed-Lid service setup is unavailable in this local ad-hoc build.",
-                "Настройка службы Closed-Lid недоступна в этой локальной ad-hoc сборке."
-            )
-            return
-        }
         closedLidHelperActionInProgress = true
         closedLidActionMessage = t(
-            "Checking the bundled Closed-Lid service…",
-            "Проверяем встроенную службу Closed-Lid…")
+            "Checking the existing helper before requesting administrator access…",
+            "Проверяем установленный helper перед запросом прав администратора…")
         appendEvent(
             .info,
-            "Checking the bundled Closed-Lid service.",
-            "Проверяется встроенная служба Closed-Lid."
+            "Checking Closed-Lid helper compatibility.",
+            "Проверяется совместимость Closed-Lid helper."
         )
 
         Task {
-            guard !closedLidProtection.helperReachable else {
+            let status = await power.refreshClosedLidStatus(retryIfNeeded: false)
+            closedLidProtection = status
+            guard !status.helperInstalled || !status.helperReachable else {
                 closedLidActionMessage = t(
-                    "Closed-Lid service is already ready. No password is required.",
-                    "Служба Closed-Lid уже готова. Пароль не требуется.")
+                    "Closed-Lid helper is already ready. No password is required.",
+                    "Closed-Lid helper уже готов. Пароль не требуется.")
                 closedLidHelperActionInProgress = false
                 appendEvent(
                     .success,
-                    "Closed-Lid service is ready; no update was needed.",
-                    "Служба Closed-Lid готова; обновление не потребовалось."
+                    "Closed-Lid helper is ready; no update was needed.",
+                    "Closed-Lid helper готов; обновление не потребовалось."
                 )
                 updateDiagnostics()
                 return
             }
 
-            do {
-                let usedTouchID = try await touchIDAuthorization.authorizeIfAvailable(
-                    reason: t(
-                        "Allow CodexAwake to register its Closed-Lid service",
-                        "Разрешить CodexAwake зарегистрировать службу закрытой крышки"
-                    )
+            openClosedLidHelperCommand(
+                resource: "install-closed-lid-helper",
+                title: t(
+                    "Installing CodexAwake Closed-Lid helper",
+                    "Установка Closed-Lid helper CodexAwake"
                 )
-                let serviceState = try await closedLidHelperService.register(
-                    replacingExisting: closedLidHelperService.state == .enabled
-                )
+            )
+            closedLidActionMessage = t(
+                "Enter the administrator password in Terminal once. CodexAwake never receives or stores it.",
+                "Один раз введите пароль администратора в Терминале. CodexAwake не получает и не сохраняет его."
+            )
+            appendEvent(
+                .warning,
+                "Closed-Lid helper installer opened for explicit administrator approval.",
+                "Установщик Closed-Lid helper открыт для явного подтверждения администратором."
+            )
+            updateDiagnostics()
 
-                if serviceState == .requiresApproval {
-                    closedLidHelperService.openApprovalSettings()
-                    closedLidActionMessage = t(
-                        usedTouchID
-                            ? "Touch ID confirmed. Allow CodexAwake in Login Items to finish setup."
-                            : "Allow CodexAwake in Login Items to finish the protected system setup.",
-                        usedTouchID
-                            ? "Touch ID подтверждён. Разрешите CodexAwake в «Объектах входа», чтобы завершить настройку."
-                            : "Разрешите CodexAwake в «Объектах входа», чтобы завершить системную настройку."
-                    )
-                    appendEvent(
-                        .warning,
-                        "Closed-Lid service is waiting for approval in System Settings.",
-                        "Служба Closed-Lid ожидает разрешения в Системных настройках."
-                    )
-                    closedLidProtection = await power.closedLidSnapshot()
-                    closedLidHelperActionInProgress = false
-                    updateDiagnostics()
-                    return
-                }
-
-                closedLidActionMessage = t(
-                    usedTouchID
-                        ? "Touch ID confirmed. Starting the Closed-Lid service…"
-                        : "macOS approved the Closed-Lid service. Starting it…",
-                    usedTouchID
-                        ? "Touch ID подтверждён. Запускаем службу Closed-Lid…"
-                        : "macOS разрешила службу Closed-Lid. Запускаем её…"
-                )
-            } catch {
-                closedLidActionMessage = localizedClosedLidSetupError(error)
-                closedLidHelperActionInProgress = false
-                appendEvent(
-                    .warning,
-                    "Closed-Lid service setup did not complete: \(SafeDisplay.sanitizedError(error))",
-                    "Настройка службы Closed-Lid не завершена: \(SafeDisplay.sanitizedError(error))"
-                )
-                updateDiagnostics()
-                return
-            }
-
-            // A healthy launch daemon answers immediately. Keep setup bounded:
-            // two three-second XPC attempts plus one short retry delay.
-            for attempt in 0..<2 {
-                if attempt > 0 {
-                    do { try await Task.sleep(for: .milliseconds(500)) } catch { break }
+            for _ in 0..<10 {
+                do {
+                    try await Task.sleep(for: .seconds(2))
+                } catch {
+                    break
                 }
                 let refreshed = await power.refreshClosedLidStatus(retryIfNeeded: false)
                 closedLidProtection = refreshed
                 if refreshed.helperReachable {
                     closedLidActionMessage = t(
-                        "Closed-Lid service is ready. Future ON/OFF changes need no password.",
-                        "Служба Closed-Lid готова. Дальнейшее включение и выключение не требует пароля."
+                        "Closed-Lid helper is ready. Future ON/OFF changes need no password.",
+                        "Closed-Lid helper готов. Дальнейшее включение и выключение не требует пароля."
                     )
                     appendEvent(
                         .success,
-                        "Closed-Lid service registration completed.",
-                        "Регистрация службы Closed-Lid завершена."
+                        "Closed-Lid helper installation or repair completed.",
+                        "Установка или восстановление Closed-Lid helper завершено."
                     )
                     break
                 }
             }
             if !closedLidProtection.helperReachable {
-                if closedLidHelperService.state == .requiresApproval {
-                    closedLidHelperService.openApprovalSettings()
-                    closedLidActionMessage = t(
-                        "Allow CodexAwake in System Settings → General → Login Items, then press Retry.",
-                        "Разрешите CodexAwake в «Системные настройки → Основные → Объекты входа», затем нажмите «Повторить»."
-                    )
-                } else {
-                    closedLidActionMessage = t(
-                        "The Closed-Lid service was registered but did not answer. Press Retry; normal lid sleep remains active until the lease is confirmed.",
-                        "Служба Closed-Lid зарегистрирована, но не ответила. Нажмите «Повторить»; до подтверждения аренды обычный сон при закрытии крышки остаётся активным."
-                    )
-                }
+                closedLidActionMessage = t(
+                    "Finish the password prompt in Terminal, then press Retry. Do not close the lid before the status becomes Active.",
+                    "Завершите ввод пароля в Терминале и нажмите «Повторить». Не закрывайте крышку до статуса «Активен»."
+                )
                 appendEvent(
                     .warning,
-                    "Closed-Lid service registration completed without a healthy XPC connection.",
-                    "Регистрация службы Closed-Lid завершена без рабочего XPC-соединения."
+                    "Closed-Lid helper is still waiting for installation or connection.",
+                    "Closed-Lid helper всё ещё ожидает установки или подключения."
                 )
             }
             closedLidHelperActionInProgress = false
@@ -494,19 +446,13 @@ final class AppModel: ObservableObject {
             closedLidProtection = status
             if status.helperReachable {
                 closedLidActionMessage = t(
-                    "Service connection restored. No password was required.",
-                    "Связь со службой восстановлена без пароля."
-                )
-            } else if closedLidHelperService.state == .requiresApproval {
-                closedLidHelperService.openApprovalSettings()
-                closedLidActionMessage = t(
-                    "The service is waiting for approval in System Settings → General → Login Items.",
-                    "Служба ожидает разрешения в «Системные настройки → Основные → Объекты входа»."
+                    "Helper connection restored. No password was required.",
+                    "Связь с helper восстановлена без пароля."
                 )
             } else {
                 closedLidActionMessage = t(
-                    "The service is still unavailable. Use Repair only if automatic reconnect does not recover it.",
-                    "Служба всё ещё недоступна. Используйте «Восстановить», только если автоподключение не помогло."
+                    "The helper is unavailable. Use Repair / Update and enter the administrator password once.",
+                    "Helper недоступен. Нажмите «Восстановить / обновить» и один раз введите пароль администратора."
                 )
             }
             closedLidHelperActionInProgress = false
@@ -524,8 +470,6 @@ final class AppModel: ObservableObject {
     }
 
     func removeClosedLidHelper() {
-        guard !closedLidHelperActionInProgress else { return }
-        closedLidHelperActionInProgress = true
         Task {
             closedLidProtectionEnabled = false
             preferences.setClosedLidProtectionEnabled(false)
@@ -535,29 +479,17 @@ final class AppModel: ObservableObject {
                 record(error)
             }
             closedLidProtection = await power.refreshClosedLidStatus()
-            do {
-                _ = try await touchIDAuthorization.authorizeIfAvailable(
-                    reason: t(
-                        "Allow CodexAwake to remove its Closed-Lid service",
-                        "Разрешить CodexAwake удалить службу закрытой крышки"
-                    )
+            openClosedLidHelperCommand(
+                resource: "uninstall-closed-lid-helper",
+                title: t(
+                    "Removing CodexAwake Closed-Lid helper",
+                    "Удаление Closed-Lid helper CodexAwake"
                 )
-                try closedLidHelperService.unregister()
-                closedLidActionMessage = t(
-                    "Closed-Lid service removed. Normal lid sleep is restored.",
-                    "Служба Closed-Lid удалена. Обычный сон при закрытии крышки восстановлен."
-                )
-                appendEvent(
-                    .success,
-                    "Closed-Lid service unregistered.",
-                    "Служба Closed-Lid снята с регистрации."
-                )
-            } catch {
-                closedLidActionMessage = localizedClosedLidSetupError(error)
-                record(error)
-            }
-            closedLidProtection = await power.refreshClosedLidStatus(retryIfNeeded: false)
-            closedLidHelperActionInProgress = false
+            )
+            closedLidActionMessage = t(
+                "Complete the administrator password prompt in Terminal.",
+                "Введите пароль администратора в Терминале."
+            )
             updateDiagnostics()
         }
     }
@@ -600,10 +532,6 @@ final class AppModel: ObservableObject {
 
     var allowSleepWhenCodexIdle: Bool {
         !keepAwakeForCodexDesktop
-    }
-
-    var closedLidHelperSetupAvailable: Bool {
-        closedLidHelperService.registrationIssue == nil
     }
 
     func applyProtectionProfile(_ id: ProtectionProfileID) {
@@ -1258,29 +1186,7 @@ final class AppModel: ObservableObject {
                     do { try await Task.sleep(for: .seconds(1)) } catch { return }
                     continue
                 }
-                var value = await power.refreshClosedLidStatus()
-                let serviceState = closedLidHelperService.state
-                if value.helperInstalled, !value.helperReachable,
-                    !didAttemptClosedLidRegistrationRefresh,
-                    serviceState == .enabled || serviceState == .notRegistered
-                {
-                    didAttemptClosedLidRegistrationRefresh = true
-                    closedLidHelperActionInProgress = true
-                    closedLidActionMessage = t(
-                        "Refreshing the approved Closed-Lid service after the app update…",
-                        "Обновляем разрешённую службу Closed-Lid после обновления приложения…"
-                    )
-                    do {
-                        _ = try await closedLidHelperService.register(
-                            replacingExisting: serviceState == .enabled
-                        )
-                        try await Task.sleep(for: .milliseconds(500))
-                        value = await power.refreshClosedLidStatus(retryIfNeeded: false)
-                    } catch {
-                        closedLidActionMessage = localizedClosedLidSetupError(error)
-                    }
-                    closedLidHelperActionInProgress = false
-                }
+                let value = await power.refreshClosedLidStatus()
                 if value != closedLidProtection {
                     let previous = closedLidProtection
                     closedLidProtection = value
@@ -1324,30 +1230,35 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func localizedClosedLidSetupError(_ error: Error) -> String {
-        if case TouchIDAuthorizationError.cancelled = error {
-            return t(
-                "Touch ID was cancelled. The Closed-Lid service was not changed.",
-                "Touch ID отменён. Служба Closed-Lid не изменена."
+    private func openClosedLidHelperCommand(resource: String, title: String) {
+        do {
+            guard let script = Bundle.main.url(forResource: resource, withExtension: "sh") else {
+                throw CodexAwakeError.serverStartFailed("Closed-Lid installer resource is missing")
+            }
+            let support = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            ).appendingPathComponent("CodexAwake", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: support,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
             )
-        }
-        if case ClosedLidHelperServiceError.missingFromApplicationBundle = error {
-            return t(
-                "This build does not contain the protected Closed-Lid service. Reinstall CodexAwake.",
-                "В этой сборке нет защищённой службы Closed-Lid. Переустановите CodexAwake."
+            let command = support.appendingPathComponent("\(title).command")
+            try ClosedLidHelperCommandBuilder.commandContents(
+                scriptPath: script.path,
+                title: title
+            ).write(to: command, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: command.path
             )
+            NSWorkspace.shared.open(command)
+        } catch {
+            record(error)
         }
-        if case ClosedLidHelperServiceError.signedApplicationRequired = error {
-            return t(
-                "This local build has no Apple Developer signature. Touch ID cannot run its root Closed-Lid service. Install a Developer ID signed build; normal lid sleep remains active.",
-                "У этой локальной сборки нет подписи Apple Developer. Touch ID не может запустить её root-службу Closed-Lid. Установите сборку с подписью Developer ID; пока действует обычный сон при закрытии крышки."
-            )
-        }
-        let message = SafeDisplay.sanitizedError(error)
-        return t(
-            "Closed-Lid setup failed: \(message)",
-            "Не удалось настроить Closed-Lid: \(message)"
-        )
     }
 
     private func applyPowerAssertionConfiguration(event: String, russianEvent: String) {
@@ -1453,5 +1364,5 @@ final class AppModel: ObservableObject {
         return formatter
     }()
 
-    private static let automationSchemaVersion = 2
+    private static let automationSchemaVersion = 4
 }

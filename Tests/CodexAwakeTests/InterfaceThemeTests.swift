@@ -121,7 +121,7 @@ final class OnboardingStateTests: XCTestCase {
         XCTAssertTrue(relaunchedModel.firstRunAcknowledged)
     }
 
-    func testСтарыйПрофильЗакрытойКрышкиНеБлокируетсяОтсутствиемЗарядки() throws {
+    func testСтарыйПрофильЗакрытойКрышкиМигрируетНаНадёжноеПрисутствиеCodex() throws {
         // Arrange
         let suiteName = "CodexAwakeClosedLidMigrationTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -142,8 +142,38 @@ final class OnboardingStateTests: XCTestCase {
 
         // Assert
         XCTAssertFalse(model.automationRules.requiresExternalPower)
+        XCTAssertEqual(model.automationRules.trigger, .codexRunning)
+        XCTAssertFalse(model.automationRules.automaticallyStopsAfterTasks)
         XCTAssertFalse(preferences.automationRules.requiresExternalPower)
-        XCTAssertEqual(preferences.automationSchemaVersion, 2)
+        XCTAssertEqual(preferences.automationRules.trigger, .codexRunning)
+        XCTAssertFalse(preferences.automationRules.automaticallyStopsAfterTasks)
+        XCTAssertEqual(preferences.automationSchemaVersion, 4)
+    }
+
+    func testСтарыйНочнойПрофильМигрируетНаНадёжноеПрисутствиеCodex() throws {
+        // Arrange
+        let suiteName = "CodexAwakeNightMigrationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = UserDefaultsAppPreferences(defaults: defaults)
+        preferences.setProtectionProfileID(.nightTask)
+        preferences.setAutomationRules(
+            ProtectionAutomationRules(
+                trigger: .activeTasks,
+                requiresExternalPower: true,
+                automaticallyStopsAfterTasks: true
+            )
+        )
+        preferences.setAutomationSchemaVersion(3)
+
+        // Act
+        let model = AppModel(preferences: preferences)
+
+        // Assert
+        XCTAssertEqual(model.automationRules.trigger, .codexRunning)
+        XCTAssertFalse(model.automationRules.automaticallyStopsAfterTasks)
+        XCTAssertTrue(model.automationRules.requiresExternalPower)
+        XCTAssertEqual(preferences.automationSchemaVersion, 4)
     }
 
     func testURLАвтоматизацииПрименяетПрофиль() throws {

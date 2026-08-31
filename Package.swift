@@ -36,9 +36,6 @@ let package = Package(
                         "-Xfrontend", "Resources/AppIntentsConstProtocols.json",
                     ]
                 )
-            ],
-            linkerSettings: [
-                .linkedFramework("LocalAuthentication")
             ]
         ),
         .executableTarget(
